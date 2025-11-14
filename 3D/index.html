@@ -702,29 +702,29 @@
 
         // ===== Draw 3D Path with Transform Data =====
         async function drawFullRoomPath3D() {
-            // Curățăm scena de camere și săgeți vechi
+            // -------------------------------------------------------
+            // Cleanup
+            // -------------------------------------------------------
             currentModelObjects.forEach(o => scene.remove(o));
             currentModelObjects = [];
             if (pathLineObject) { scene.remove(pathLineObject); pathLineObject = null; }
+
             if (lastPath.length < 2) return;
 
-            /* //Debugging Sphere
-            const geometry = new THREE.SphereGeometry( 0.1, 32, 16 );
-            const material = new THREE.MeshBasicMaterial( { color: 0xffff00 } );
-            const sphere = new THREE.Mesh( geometry, material );
-            scene.add( sphere );
-            */
-
-            // Funcție auxiliară pentru adăugarea unei săgeți 3D
+            // -------------------------------------------------------
+            // Helper: Draw a 3D arrow on grid coordinates
+            // -------------------------------------------------------
             function addArrow3D(fromGridPos, dir, transform, color = 0xff0000, length = 0.5) {
                 if (!transform) return null;
 
-                // Grid (x, y) -> World (X = x, Z = y)
-                const worldPos = transform.gridToWorld(fromGridPos.y, fromGridPos.x);
-                const origin = new THREE.Vector3(worldPos.x, 0.05, worldPos.y);
+                const wp = transform.gridToWorld(fromGridPos.y, fromGridPos.x);
 
-                // Direcție pe planul X-Z (Y este înălțimea)
-                const dir3D = dir ? new THREE.Vector3(dir.x, 0, dir.y).normalize() : new THREE.Vector3(0, 0, 1);
+                // FIX coordinated conversion (Z inverted)
+                const origin = new THREE.Vector3(wp.x, 0.05, -wp.y);
+
+                const dir3D = dir
+                    ? new THREE.Vector3(dir.x, 0, -dir.y).normalize()
+                    : new THREE.Vector3(0, 0, -1);
 
                 const arrow = new THREE.ArrowHelper(dir3D, origin, length, color);
                 scene.add(arrow);
@@ -732,121 +732,174 @@
                 return arrow;
             }
 
-            const positions = [];
+            // -------------------------------------------------------
+            // Variables used for chaining room connections
+            // -------------------------------------------------------
             let prevExitWorldPos = null;
-
+            let prevExitDir3D = null;
+            const pathPositions = [];
+            let cumulativeRotation = new THREE.Quaternion(); // identitate la început
+            
+            // -------------------------------------------------------
+            // MAIN LOOP: place each room
+            // -------------------------------------------------------
             for (let i = 0; i < lastPath.length; i++) {
+
                 const roomName = lastPath[i];
                 const room = metadata.find(r => r.name === roomName);
                 if (!room) continue;
 
-                // ===== Încarcă modelul camerei =====
+                // -------------------------------
+                // Load room model (GLB or fallback)
+                // -------------------------------
                 let obj;
                 if (room.modelData) {
                     obj = await loadGLBFromArrayBuffer(room.modelData);
                 } else {
-                    // Placeholder dacă nu e model
                     const cols = room.grid[0].length;
                     const rows = room.grid.length;
-                    const scale = room.transform ? room.transform.cellSize : 0.1;
+                    const cs = room.transform ? room.transform.cellSize : 0.1;
+
                     obj = new THREE.Mesh(
-                        new THREE.BoxGeometry(cols * scale, 0.1, rows * scale),
+                        new THREE.BoxGeometry(cols * cs, 0.1, rows * cs),
                         new THREE.MeshStandardMaterial({ color: 0x888888, wireframe: true })
                     );
                 }
 
                 scene.add(obj);
                 currentModelObjects.push(obj);
-                obj.updateMatrixWorld(true);
 
+                // -------------------------------------------------------
+                // FIRST ROOM: place at origin with zero rotation
+                // -------------------------------------------------------
                 if (i === 0) {
-                    // ===== Prima cameră =====
                     obj.position.set(0, 0, 0);
-                    obj.rotation.y = 0;
+                    obj.rotation.set(0, 0, 0);
                     obj.updateMatrixWorld(true);
 
-                    // Săgeată de ieșire (verde)
-                    if (i < lastPath.length - 1) {
-                        const nextRoomName = lastPath[i + 1];
+                    // initialize exit direction from room 0
+                    const nextRoomName = lastPath[1];
+                    if (nextRoomName && room.entrances[nextRoomName]) {
+
                         const exit = room.entrances[nextRoomName];
 
-                        if (exit) {
-                            addArrow3D({ x: exit.x, y: exit.y }, exit.dir, room.transform, 0x00ff00);
-                            const exitWorld = room.transform.gridToWorld(exit.y, exit.x);
-                            prevExitWorldPos = new THREE.Vector3(exitWorld.x, 0, exitWorld.y);
-                            positions.push(prevExitWorldPos.clone());
-                        }
+                        // FIX: convert 2D direction → 3D with Z inverted
+                        prevExitDir3D = new THREE.Vector3(exit.dir.x, 0, -exit.dir.y).normalize();
+
+                        // FIX: convert 2D pos → 3D
+                        const wp = room.transform.gridToWorld(exit.y, exit.x);
+                        prevExitWorldPos = new THREE.Vector3(wp.x, 0, -wp.y);
+
+                        addArrow3D({ x: exit.x, y: exit.y }, exit.dir, room.transform, 0x00ff00);
+                        pathPositions.push(prevExitWorldPos.clone());
                     }
+
+                    continue;
+                }
+
+                // -------------------------------------------------------
+                // OTHER ROOMS: align entrance to previous exit
+                // -------------------------------------------------------
+                const prevRoom = metadata.find(r => r.name === lastPath[i - 1]);
+                const curEntrance = room.entrances?.[prevRoom.name];
+
+                if (curEntrance && prevExitWorldPos && room.transform) {
+
+                    // 1) Convert entrance direction (2D → 3D)
+                    const curDir3D = new THREE.Vector3(
+                        curEntrance.dir.x,
+                        0,
+                        -curEntrance.dir.y
+                    ).normalize();
+
+                    // 2) target direction = opposite of previous exit direction
+                    const targetDir3D = prevExitDir3D.clone().multiplyScalar(-1).normalize();
+
+                    // 3) QUATERNION: rotate curDir → targetDir
+                    const q = new THREE.Quaternion().setFromUnitVectors(curDir3D, targetDir3D);
+
+                    q.premultiply(cumulativeRotation);
+
+                    // 4) Apply rotation on whole room
+                    obj.applyQuaternion(q);
+                    obj.updateMatrixWorld(true);
+
+                    cumulativeRotation.copy(q);
+
+                    // 5) Entrance local 3D pos
+                    const wp = room.transform.gridToWorld(curEntrance.y, curEntrance.x);
+                    const entranceLocal = new THREE.Vector3(wp.x, 0, -wp.y);
+
+                    // 6) Entrance rotated
+                    const entranceRotated = entranceLocal.clone().applyQuaternion(q);
+
+                    // 7) Translate room so entrance = prevExitPos
+                    const offset = new THREE.Vector3().subVectors(prevExitWorldPos, entranceRotated);
+                    obj.position.add(offset);
+                    obj.updateMatrixWorld(true);
+
+                    // 8) Compute next exit of this room
+                    const nextRoomName = lastPath[i + 1];
+                    if (nextRoomName && room.entrances[nextRoomName]) {
+
+                        const exit = room.entrances[nextRoomName];
+
+                        // Fix 3D exit direction
+                        prevExitDir3D = new THREE.Vector3(exit.dir.x, 0, -exit.dir.y).normalize();
+                        
+                        const wp2 = room.transform.gridToWorld(exit.y, exit.x);
+                        const exitLocal = new THREE.Vector3(wp2.x, 0, -wp2.y);
+                        const exitRotated = exitLocal.clone().applyQuaternion(q);
+
+                        prevExitWorldPos = exitRotated.add(offset);
+
+                        pathPositions.push(prevExitWorldPos.clone());
+                        addArrow3D({ x: exit.x, y: exit.y }, exit.dir, room.transform, 0x00ff00);
+                    }
+
                 } else {
-                    // ===== Camere ulterioare =====
-                    const prevRoom = metadata.find(r => r.name === lastPath[i - 1]);
-                    const curEntrance = room.entrances ? room.entrances[prevRoom.name] : null;
-
-                    if (curEntrance && prevExitWorldPos && room.transform) {
-                        // Poziția intrării în coordonate 3D
-                        const entranceWorld3D = room.transform.gridToWorld(curEntrance.y, curEntrance.x);
-                        const entrancePos = new THREE.Vector3(entranceWorld3D.x, 0, entranceWorld3D.y);
-
-                        // Poziționează camera astfel încât intrarea să coincidă cu ieșirea precedentă
-                        const offset = new THREE.Vector3().subVectors(prevExitWorldPos, entrancePos);
-                        offset.z = -1 * offset.z;
-                        console.log(offset.x, offset.y, offset.z);
-                        obj.position.add(offset);
-                        obj.updateMatrixWorld(true);
-
-                        // Dacă are ieșire către camera următoare, adaug-o
-                        if (i < lastPath.length - 1) {
-                            const nextRoomName = lastPath[i + 1];
-                            const exit = room.entrances[nextRoomName];
-                            if (exit) {
-                                addArrow3D({ x: exit.x, y: exit.y }, exit.dir, room.transform, 0x00ff00);
-                                const exitWorld3D = room.transform.gridToWorld(exit.y, exit.x);
-                                prevExitWorldPos = new THREE.Vector3(exitWorld3D.x, 0, exitWorld3D.y).add(offset);
-                                positions.push(prevExitWorldPos.clone());
-                            }
-                        }
-                    } else {
-                        // fallback dacă nu există date de conectare
-                        obj.position.copy(prevExitWorldPos ? prevExitWorldPos.clone().add(new THREE.Vector3(1, 0, 0)) : new THREE.Vector3(0, 0, 0));
-                        prevExitWorldPos = obj.position.clone();
-                    }
+                    // Fallback if entrance missing
+                    obj.position.copy(
+                        prevExitWorldPos.clone().add(new THREE.Vector3(1, 0, 0))
+                    );
+                    prevExitWorldPos = obj.position.clone();
                 }
             }
 
-            // ===== Linie între camere =====
-            if (positions.length >= 2) {
+            // -------------------------------------------------------
+            // Draw connecting path line
+            // -------------------------------------------------------
+            if (pathPositions.length >= 2) {
                 const lineMat = new THREE.LineBasicMaterial({ color: 0x0000ff });
-                const points = new THREE.BufferGeometry().setFromPoints(positions);
+                const points = new THREE.BufferGeometry().setFromPoints(pathPositions);
                 pathLineObject = new THREE.Line(points, lineMat);
                 scene.add(pathLineObject);
             }
 
-            // ===== Ajustează camera =====
+            // -------------------------------------------------------
+            // Auto-fit camera to view all rooms
+            // -------------------------------------------------------
             if (currentModelObjects.length > 0) {
                 const box = new THREE.Box3();
                 currentModelObjects.forEach(o => {
-                    // extinde bounding box-ul pentru fiecare obiect
                     if (o.isMesh || o.isLine || o.isGroup) box.expandByObject(o);
                 });
 
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
                 const maxDim = Math.max(size.x, size.z);
-                const fov = camera.fov * (Math.PI / 180);
-                let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-                cameraDistance *= 1.5;
 
-                // Poziționează camera deasupra și în fața centrului
-                camera.position.set(center.x + cameraDistance, center.y + cameraDistance, center.z + cameraDistance);
+                const fov = camera.fov * Math.PI / 180;
+                let dist = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.5;
+
+                camera.position.set(center.x + dist, center.y + dist, center.z + dist);
                 camera.lookAt(center);
 
-                // Reactivăm controlurile
-                controls.enabled = true;
                 controls.target.copy(center);
                 controls.update();
+                controls.enabled = true;
             }
         }
-
 
         // Initialize
         updateRoomList();
