@@ -16,14 +16,14 @@ DATA_DIR = os.path.join(BASE_DIR, "../data")
 OUT_DIR = os.path.join(BASE_DIR, "../outlinesPreProcessed")
 
 # maximum number of points we keep per cloud (downsample)
-MAX_POINTS = 50000
+MAX_POINTS = 40000
 
 # pixels per meter in SVG
 SCALE_PX_PER_M = 100.0  # 1 m = 100 px
 
 # how "detailed" the contour is
 # smaller factor -> mai concav / mai detaliat
-ALPHA_FACTOR = 4.0
+ALPHA_FACTOR = 3.0
 
 # ========= HELPERI =========
 
