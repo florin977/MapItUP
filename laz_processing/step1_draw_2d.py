@@ -29,7 +29,7 @@ os.makedirs(OUT_SVG, exist_ok=True)
 
 def process_one(laz_path: str):
     name = os.path.splitext(os.path.basename(laz_path))[0]
-    svg_out = os.path.join(OUT_SVG, f"{name}_topdown.svg")
+    svg_out = os.path.join(OUT_SVG, f"{name}_step1.svg")
 
     # --- Citește LAZ ---
     las = laspy.read(laz_path)

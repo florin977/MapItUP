@@ -308,7 +308,7 @@ def main():
             raster = build_raster(pts, (W, H))
             out_img = raycast_and_connect(raster)
             out_img = whiten_padding(out_img, pad=PADDING_PX)
-            out_svg = OUT_DIR / f"{svg.stem}_raycast.svg"
+            out_svg = OUT_DIR / f"{svg.stem}_step2.svg"
             write_svg_with_image_strict(out_img, out_svg)
             print(f"    [✓] Salvat: {out_svg}")
         except Exception as e:
