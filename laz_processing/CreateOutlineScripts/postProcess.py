@@ -11,7 +11,6 @@ Ce face:
   * Deschide SVG-uri vectoriale (path, line, polyline, polygon, rect, circle, ellipse).
   * Îngroașă liniile: crește stroke-width cu +5 px (~ 2.5 px în toate direcțiile).
   * Adaugă padding de 2 px în jurul întregului desen (prin viewBox).
-  * Adaugă un dreptunghi de fundal alb cât tot viewBox-ul.
 """
 
 from pathlib import Path
@@ -26,7 +25,7 @@ PADDING = 2.0        # 2 px padding pe toate marginile
 SVG_NS = "http://www.w3.org/2000/svg"
 NSMAP = {"svg": SVG_NS}
 
-ET.register_namespace("", SVG_NS)  # să nu bage prefix-uri ci bare <svg>
+ET.register_namespace("", SVG_NS)  # evită prefix-uri SVG
 
 # directoare relative față de CreateOutlineScripts/postProcess.py
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -42,7 +41,6 @@ def _parse_float(s):
     if s is None:
         return None
     s = s.strip()
-    # scoatem "px" sau alte unități
     m = re.match(r"([0-9.+-eE]+)", s)
     if not m:
         return None
@@ -53,9 +51,6 @@ def _parse_float(s):
 
 
 def get_stroke_width(el):
-    """
-    Caută stroke-width fie ca atribut, fie în style="...".
-    """
     # atribut direct
     sw_attr = el.get("stroke-width")
     val = _parse_float(sw_attr)
@@ -65,26 +60,19 @@ def get_stroke_width(el):
     # în style
     style = el.get("style")
     if style and "stroke-width" in style:
-        # separăm declarațiile CSS
         parts = style.split(";")
         for p in parts:
             if "stroke-width" in p:
                 _, v = p.split(":", 1)
                 return _parse_float(v)
-
     return None
 
 
 def set_stroke_width(el, new_width):
-    """
-    Setează stroke-width atât în atribut, cât și în style (dacă îl conține).
-    """
     new_str = f"{new_width:g}"
 
-    # atribut direct
     el.set("stroke-width", new_str)
 
-    # în style
     style = el.get("style")
     if style:
         parts = style.split(";")
@@ -106,21 +94,16 @@ def set_stroke_width(el, new_width):
 
 
 def thicken_element(el):
-    """
-    Îngroașă stroke-ul pentru un element geometric.
-    """
-    # dacă nu are stroke deloc, nu umblăm (sau am putea adăuga, dar nu e nevoie)
     has_stroke_attr = el.get("stroke") is not None
     style = el.get("style", "")
     has_stroke_in_style = "stroke:" in style
 
     if not has_stroke_attr and not has_stroke_in_style:
-        # probabil e doar fill; îl lăsăm în pace
         return
 
     current = get_stroke_width(el)
     if current is None:
-        current = 1.0  # default
+        current = 1.0
     new_w = current + STROKE_EXTRA
     set_stroke_width(el, new_w)
 
@@ -139,30 +122,20 @@ def format_viewbox(vals):
 
 
 def get_svg_size(root):
-    """
-    Returnează (minx, miny, width, height) pe baza viewBox sau width/height.
-    """
     vb = root.get("viewBox")
     if vb:
         return parse_viewbox(vb)
 
-    # fallback: width/height
     w = _parse_float(root.get("width"))
     h = _parse_float(root.get("height"))
     if w is None or h is None:
-        # dacă nici astea nu există, punem ceva default
         return [0.0, 0.0, 100.0, 100.0]
     return [0.0, 0.0, w, h]
 
 
 def update_svg_size_with_padding(root, padding):
-    """
-    Mărește viewBox cu padding pe toate marginile.
-    Păstrează width/height în px dacă existau.
-    """
     minx, miny, w, h = get_svg_size(root)
 
-    # aplicăm padding pe viewBox
     minx_new = minx - padding
     miny_new = miny - padding
     w_new = w + 2 * padding
@@ -170,31 +143,12 @@ def update_svg_size_with_padding(root, padding):
 
     root.set("viewBox", format_viewbox([minx_new, miny_new, w_new, h_new]))
 
-    # updatăm width/height dacă există
-    w_attr = root.get("width")
-    h_attr = root.get("height")
-    if w_attr is not None:
+    if root.get("width") is not None:
         root.set("width", f"{w_new:g}")
-    if h_attr is not None:
+    if root.get("height") is not None:
         root.set("height", f"{h_new:g}")
 
     return minx_new, miny_new, w_new, h_new
-
-
-def add_white_background(root, minx, miny, w, h):
-    """
-    Adaugă un <rect> cu fundal alb cât tot viewBox-ul.
-    Îl punem ca primul copil al lui <svg>.
-    """
-    rect = ET.Element(f"{{{SVG_NS}}}rect")
-    rect.set("x", f"{minx:g}")
-    rect.set("y", f"{miny:g}")
-    rect.set("width", f"{w:g}")
-    rect.set("height", f"{h:g}")
-    rect.set("fill", "white")
-
-    # băgăm rectul în fața celorlalți copii
-    root.insert(0, rect)
 
 
 # ---------- Procesare fișier ----------
@@ -215,12 +169,11 @@ def process_svg_file(svg_path: Path, out_path: Path):
             thicken_element(el)
 
     # 2) Mărim viewBox + width/height cu padding
-    minx, miny, w, h = update_svg_size_with_padding(root, PADDING)
+    update_svg_size_with_padding(root, PADDING)
 
-    # 3) Adăugăm fundal alb
-    add_white_background(root, minx, miny, w, h)
+    # NU mai adăugăm fundal alb aici
 
-    # 4) Salvăm SVG-ul nou
+    # 3) Salvăm SVG-ul
     tree.write(out_path, encoding="utf-8", xml_declaration=True)
     print(f" -> Salvat: {out_path}")
 
