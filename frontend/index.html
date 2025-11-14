@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MapItUP</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Poppins', 'sans-serif'],
+            },
+            colors: {
+              'brand-primary': '#8b5cf6',
+              'brand-secondary': '#a78bfa',
+              'brand-light': '#c4b5fd',
+              'brand-accent': '#2dd4bf',
+              'brand-background': '#0f172a',
+              'brand-surface': '#1e293b',
+              'brand-text-primary': '#e2e8f0',
+              'brand-text-secondary': '#94a3b8',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: 0 },
+                '100%': { opacity: 1 },
+              },
+              fadeInUp: {
+                '0%': { opacity: 0, transform: 'translateY(20px)' },
+                '100%': { opacity: 1, transform: 'translateY(0)' },
+              }
+            },
+            animation: {
+              fadeIn: 'fadeIn 0.5s ease-in-out',
+              fadeInUp: 'fadeInUp 0.5s ease-in-out',
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      :root {
+          --map-bg: #f1f5f9;
+          --map-road: #cbd5e1;
+          --map-building-bg: #ffffff;
+          --map-building-stroke: #94a3b8;
+          --map-text: #1e293b;
+          --map-water-fill: #67e8f9;
+          --map-water-stroke: #06b6d4;
+          --map-pattern-stroke: #e2e8f0;
+      }
+      html.dark {
+          --map-bg: #0f172a;
+          --map-road: #475569;
+          --map-building-bg: #1e293b;
+          --map-building-stroke: #64748b;
+          --map-text: #e2e8f0;
+          --map-water-fill: #14b8a6;
+          --map-water-stroke: #2dd4bf;
+          --map-pattern-stroke: #334155;
+      }
+      body {
+        font-family: 'Poppins', sans-serif;
+      }
+      svg text {
+        cursor: pointer;
+        -webkit-user-select: none; /* Safari */
+        -ms-user-select: none; /* IE 10+ */
+        user-select: none;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-100 dark:bg-brand-background">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
