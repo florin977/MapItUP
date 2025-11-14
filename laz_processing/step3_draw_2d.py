@@ -1,13 +1,6 @@
 #AICI DAM REMOVE LA PUNCTELE NEGRE DIN PRIMUL
 #poate il facem step4 si mai adaug unul intermediar.
 
-# ============================================================
-# remove_black_points_svg_step2.py
-# Intrare : public/laz_results/outlines_svg/*.svg
-# Ieșire  : public/laz_results/outlines_step2_svg/<același_nume>.svg
-# Dep: pillow, numpy  ->  pip install pillow numpy
-# ============================================================
-
 from pathlib import Path
 from xml.etree import ElementTree as ET
 import numpy as np

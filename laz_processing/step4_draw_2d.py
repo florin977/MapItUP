@@ -1,15 +1,6 @@
 #ingrosam liniile rosii si le facem negre
 #TO DO: fa sa fie mai ca lumea liniile.
 
-# ============================================================
-# thicken_red_outline_step3_preserve_res.py
-#  - Intrare : public/laz_results/outlines_step2_svg/*.svg
-#  - Ieșire  : public/laz_results/outlines_step3_svg/*.svg
-#  - Operație: îngroașă liniile roșii cu +4px (fără a schimba rezoluția!)
-#
-# Dependențe: pillow, numpy   ->  pip install pillow numpy
-# ============================================================
-
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from PIL import Image, ImageFilter
@@ -46,7 +37,7 @@ def _get_image_href_attr(img_el):
         return "href", img_el.attrib["href"]
     return None, None
 
-# ----- Îngroșare contur roșu -----
+# ----- Îngroșare contur roșu (acum devine negru) -----
 def thicken_red_outline(pil_img: Image.Image, grow_px: int = 4) -> Image.Image:
     """Îngroașă liniile roșii cu grow_px, fără să modifice rezoluția sau DPI."""
     arr = np.array(pil_img.convert("RGBA"), dtype=np.uint8)
@@ -57,17 +48,17 @@ def thicken_red_outline(pil_img: Image.Image, grow_px: int = 4) -> Image.Image:
     # mască binară
     mask_img = Image.fromarray((is_red.astype(np.uint8) * 255), mode="L")
 
-    # dilatare  (kernel = (2*grow_px+1))
+    # dilatare (kernel = (2*grow_px+1))
     size = max(1, 2 * int(grow_px) + 1)
     thick_mask = mask_img.filter(ImageFilter.MaxFilter(size=size))
 
     thick = np.array(thick_mask, dtype=np.uint8) == 255
 
-    # colorăm în roșu pur
-    arr[...,0][thick] = 255
-    arr[...,1][thick] = 0
-    arr[...,2][thick] = 0
-    arr[...,3][thick] = 255
+    # --- MODIFICARE: colorăm în NEGRU în loc de roșu ---
+    arr[...,0][thick] = 0   # R
+    arr[...,1][thick] = 0   # G
+    arr[...,2][thick] = 0   # B
+    arr[...,3][thick] = 255 # A
 
     out_img = Image.fromarray(arr, mode="RGBA")
 
@@ -94,8 +85,17 @@ def write_svg_with_image(pil_img: Image.Image, out_svg: Path):
         "height": str(h),
         "viewBox": f"0 0 {w} {h}",
     })
-    ET.SubElement(root, "rect", {"x":"0","y":"0","width":str(w),"height":str(h),"fill":"white"})
-    image_el = ET.SubElement(root, "image", {"x":"0","y":"0","width":str(w),"height":str(h)})
+
+    ET.SubElement(root, "rect", {
+        "x": "0", "y": "0",
+        "width": str(w), "height": str(h),
+        "fill": "white"
+    })
+
+    image_el = ET.SubElement(root, "image", {
+        "x": "0", "y": "0",
+        "width": str(w), "height": str(h)
+    })
     image_el.set("{http://www.w3.org/1999/xlink}href", data_uri)
 
     ET.ElementTree(root).write(out_svg, encoding="utf-8", xml_declaration=True)

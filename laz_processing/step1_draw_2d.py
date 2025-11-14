@@ -1,11 +1,10 @@
-# ============================================================
-# laz_topdown_points_to_svg.py — .laz -> SVG (puncte din vedere de sus)
+#punem efectiv toate punctele pe plan 2d si facem .svg
+
+# - .laz -> SVG (puncte din vedere de sus)
 # - Fără filtrări pe Z; desenează toate punctele (x,y)
 # - Padding mic în jurul bbox-ului
 # - Scară fixă: 160 px / metru
 # Dep: laspy, numpy, matplotlib
-# ============================================================
-
 import os, glob
 import laspy
 import numpy as np
