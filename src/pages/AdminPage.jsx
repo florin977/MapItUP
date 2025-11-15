@@ -1,11 +1,11 @@
 // src/pages/AdminPage.jsx
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";  // <-- ADĂUGAT
 
 import "./AdminPage.css";
 
 const AdminPage = () => {
   const [showForm, setShowForm] = useState(true);
-
 
   const [roomName, setRoomName] = useState("");
   const [floor, setFloor] = useState("0");
@@ -17,6 +17,8 @@ const AdminPage = () => {
   const [laz3D, setLaz3D] = useState(null);
   const [model3D, setModel3D] = useState(null);
 
+  const navigate = useNavigate(); // <-- ADĂUGAT
+
   const handleAddClick = () => {
     setShowForm(true);
   };
@@ -25,7 +27,6 @@ const AdminPage = () => {
     setAdd3D((prev) => {
       const next = !prev;
       if (!next) {
-        // dacă debifezi, golește valorile din state
         setLaz3D(null);
         setModel3D(null);
       }
@@ -64,6 +65,7 @@ const AdminPage = () => {
 
     alert("Camera a fost adăugată (simulare, fără backend încă).");
 
+    // Reset state
     setRoomName("");
     setFloor("0");
     setAdjacentRooms("");
@@ -72,6 +74,9 @@ const AdminPage = () => {
     setLaz3D(null);
     setModel3D(null);
     e.target.reset();
+
+    // 🔥 Navighează către Configurare2D
+    navigate("/configurare2d");  // <-- LINIA IMPORTANTĂ
   };
 
   return (
@@ -183,7 +188,7 @@ const AdminPage = () => {
               </small>
             </div>
 
-            {/* Câmpuri 3D (active doar dacă Add 3D este bifat) */}
+            {/* Câmpuri 3D */}
             <div className="form-group">
               <label>.laz pentru 3D</label>
               <input
