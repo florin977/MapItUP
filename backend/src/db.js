@@ -1,2 +1,2 @@
-PORT=3000
-DATABASE_URL=postgres://user:pass@localhost:5432/mydb
+// PORT=3000
+// DATABASE_URL=postgres://user:pass@localhost:5432/mydb
