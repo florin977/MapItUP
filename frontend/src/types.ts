@@ -2,6 +2,7 @@ export enum Page {
   Login,
   Admin,
   Guest,
+  ChooseFloor
 }
 
 export interface UploadActivity {

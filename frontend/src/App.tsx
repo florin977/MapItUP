@@ -3,11 +3,12 @@ import { Page, UploadActivity, Building, Timetable, Day } from './types';
 import LoginPage from './pages/LoginPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import GuestMapPage from './pages/GuestMapPage';
+import ChooseFloorPage from './pages/ChooseFloorPage';
 import { ThemeProvider } from './contexts/ThemeContext';
 
 type Floor = 'ground' | 'first' | 'second';
 
-const API = import.meta.env.VITE_API_URL;  // 🔥 Backend URL din .env
+const API = import.meta.env.VITE_API_URL;
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>(Page.Login);
@@ -21,6 +22,7 @@ const App: React.FC = () => {
   const [routeSearches, setRouteSearches] = useState<Record<string, number>>({});
 
   const days: Day[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+
   const initialTimetable: Timetable = days.reduce((acc, day) => {
     acc[day] = Array(14).fill('Available');
     return acc;
@@ -34,7 +36,7 @@ const App: React.FC = () => {
   ]);
 
   // ============================================================
-  // 🔥 LOGIN – conectare cu backend
+  // LOGIN
   // ============================================================
   const handleAdminLogin = async (email: string, password: string): Promise<boolean> => {
     try {
@@ -44,22 +46,18 @@ const App: React.FC = () => {
         body: JSON.stringify({ mail: email, parola: password })
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        return false;
-      }
+      if (!res.ok) return false;
 
       setCurrentPage(Page.Admin);
       return true;
 
-    } catch (err) {
+    } catch {
       return false;
     }
   };
 
   // ============================================================
-  // 🔥 SIGNUP – trimitem token-ul la backend
+  // SIGNUP CU TOKEN
   // ============================================================
   const handleAdminSignup = async (
     email: string,
@@ -70,11 +68,7 @@ const App: React.FC = () => {
       const res = await fetch(`${API}/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mail: email,
-          parola: password,
-          token: token   // 🔥 token trimis corect
-        })
+        body: JSON.stringify({ mail: email, parola: password, token })
       });
 
       const data = await res.json();
@@ -85,24 +79,27 @@ const App: React.FC = () => {
 
       return { success: true };
 
-    } catch (err) {
+    } catch {
       return { success: false, message: "Server error" };
     }
   };
 
   // ============================================================
-  // LOGOUT / GUEST
+  // NAV
   // ============================================================
   const handleGuestContinue = () => setCurrentPage(Page.Guest);
   const handleLogout = () => setCurrentPage(Page.Login);
 
   // ============================================================
-  // GUEST SEARCH COUNTER
+  // GUEST SEARCH
   // ============================================================
   const handleGuestSearch = useCallback((from: string, to: string) => {
     if (!from || !to || from === to) return;
+
     setGuestSearchCount(prev => prev + 1);
+
     const routeName = [from, to].sort().join(' -> ');
+
     setRouteSearches(prev => ({
       ...prev,
       [routeName]: (prev[routeName] || 0) + 1
@@ -114,9 +111,10 @@ const App: React.FC = () => {
   // ============================================================
   const handleMapUpload = useCallback((svgContent: string, floor: Floor) => {
     setCustomMapSvgs(prev => ({ ...prev, [floor]: svgContent }));
+
     setUploadActivities(prev => [
       { floor, timestamp: Date.now() },
-      ...prev,
+      ...prev
     ].slice(0, 5));
   }, []);
 
@@ -131,14 +129,16 @@ const App: React.FC = () => {
       timetable: initialTimetable,
       rooms: [],
     };
+
     setBuildings(prev => [...prev, newBuilding]);
   };
 
-  const handleUpdateBuilding = (updatedBuilding: Building) => {
+  const handleUpdateBuilding = (updated: Building) => {
     setBuildings(prev =>
-      prev.map(b => b.id === updatedBuilding.id
-        ? { ...updatedBuilding, lastUpdated: new Date().toISOString().split('T')[0] }
-        : b
+      prev.map(b =>
+        b.id === updated.id
+          ? { ...updated, lastUpdated: new Date().toISOString().split('T')[0] }
+          : b
       )
     );
   };
@@ -148,7 +148,7 @@ const App: React.FC = () => {
   };
 
   // ============================================================
-  // PAGE RENDERER
+  // PAGE ROUTING
   // ============================================================
   const renderCurrentPage = () => {
     switch (currentPage) {
@@ -156,10 +156,11 @@ const App: React.FC = () => {
         return (
           <LoginPage
             onAdminLogin={handleAdminLogin}
-            onAdminSignup={handleAdminSignup}   // 🔥 token included
+            onAdminSignup={handleAdminSignup}
             onGuestContinue={handleGuestContinue}
           />
         );
+
       case Page.Admin:
         return (
           <AdminDashboardPage
@@ -173,8 +174,10 @@ const App: React.FC = () => {
             onUpdateBuilding={handleUpdateBuilding}
             onDeleteBuilding={handleDeleteBuilding}
             routeSearches={routeSearches}
+            goToChooseFloor={() => setCurrentPage(Page.ChooseFloor)}
           />
         );
+
       case Page.Guest:
         return (
           <GuestMapPage
@@ -184,17 +187,22 @@ const App: React.FC = () => {
             buildings={buildings}
           />
         );
-      default:
+
+      case Page.ChooseFloor:
         return (
-          <LoginPage
-            onAdminLogin={handleAdminLogin}
-            onAdminSignup={handleAdminSignup}
-            onGuestContinue={handleGuestContinue}
+          <ChooseFloorPage
+            onBack={() => setCurrentPage(Page.Admin)}
           />
         );
+
+      default:
+        return <LoginPage onAdminLogin={handleAdminLogin} onAdminSignup={handleAdminSignup} onGuestContinue={handleGuestContinue} />;
     }
   };
 
+  // ============================================================
+  // RENDER APP
+  // ============================================================
   return (
     <ThemeProvider>
       {renderCurrentPage()}

@@ -40,7 +40,7 @@ app.post("/signup", async (req, res) => {
   if (!mail || !parola) {
     return res.status(400).json({ msg: "Email and password are required." });
   }
-
+/*  */
   try {
     const check = await db.query(
       "SELECT * FROM USER_ADMIN WHERE mail = $1",
