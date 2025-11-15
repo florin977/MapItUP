@@ -1,6 +1,6 @@
 // src/pages/AdminPage.jsx
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";  // <-- ADĂUGAT
+import { useNavigate } from "react-router-dom";
 
 import "./AdminPage.css";
 
@@ -17,7 +17,7 @@ const AdminPage = () => {
   const [laz3D, setLaz3D] = useState(null);
   const [model3D, setModel3D] = useState(null);
 
-  const navigate = useNavigate(); // <-- ADĂUGAT
+  const navigate = useNavigate();
 
   const handleAddClick = () => {
     setShowForm(true);
@@ -43,7 +43,7 @@ const AdminPage = () => {
     }
 
     console.log("=== New room ===");
-    console.log("Room name:", roomName);
+    console.log("Room name:", roomName.trim());
     console.log("Floor:", floor);
     console.log("Adjacent rooms (raw):", adjacentRooms);
     console.log(
@@ -65,7 +65,7 @@ const AdminPage = () => {
 
     alert("Camera a fost adăugată (simulare, fără backend încă).");
 
-    // Reset state
+    // reset state
     setRoomName("");
     setFloor("0");
     setAdjacentRooms("");
@@ -75,8 +75,8 @@ const AdminPage = () => {
     setModel3D(null);
     e.target.reset();
 
-    // 🔥 Navighează către Configurare2D
-    navigate("/configurare2d");  // <-- LINIA IMPORTANTĂ
+    // mergi la configurarea 2D
+    navigate("/configurare2d");
   };
 
   return (

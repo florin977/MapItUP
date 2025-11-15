@@ -1,45 +1,53 @@
-.config2d-container {
-  padding: 2rem;
-  max-width: 1100px;
-  margin: 0 auto;
-  color: #fff;
-  font-family: "Inter", sans-serif;
+.canvas-scroll {
+  max-width: 1200px;   /* cât vrei să fie fereastra vizibilă */
+  max-height: 800px;
+  margin: 0 auto 1.5rem;
+  border-radius: 12px;
+  overflow: auto;      /* AICI e cheia – poți scrola oricât în lume */
+  border: 2px solid #4c4c7a;
 }
 
-.config2d-title {
-  text-align: center;
-  font-size: 2.3rem;
-  margin-bottom: 0.5rem;
-  font-weight: 800;
-}
-
-.config2d-subtitle {
-  text-align: center;
-  opacity: 0.8;
-  margin-bottom: 2rem;
-}
-
-.canvas-wrapper {
+/* restul toolbar-ului de zoom (dacă nu le ai deja) */
+.config2d-toolbar {
   display: flex;
   justify-content: center;
-  margin-bottom: 1.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 }
 
-.submit-btn {
-  padding: 1rem 2rem;
-  font-size: 1.2rem;
-  font-weight: 600;
-  border-radius: 12px;
-  display: block;
-  margin: 0 auto;
-  cursor: pointer;
-  background: linear-gradient(135deg, #6a5bff, #c41cff);
-  color: #fff;
+.zoom-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
   border: none;
-  transition: 0.2s;
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: #2c2b4a;
+  color: #f5f5ff;
 }
 
-.submit-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+.zoom-btn:hover {
+  background: #3c3a63;
+}
+
+.zoom-label {
+  min-width: 60px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.zoom-reset {
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  background: #44427a;
+  color: #f5f5ff;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.zoom-reset:hover {
+  background: #5b5997;
 }
