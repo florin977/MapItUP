@@ -21,7 +21,7 @@
 }
 
 .btn {
-  padding: 0.7rem 1.2rem;
+  padding: 0.7rem 1.2rem; /* aici */
   border-radius: 8px;
   border: none;
   cursor: pointer;
