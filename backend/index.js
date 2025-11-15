@@ -1,44 +1,29 @@
-const express = require("express");
-const cors = require("cors");
-const pool = require("./db");
-const bcrypt = require("bcrypt");
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-const ADMIN_SIGNUP_TOKEN = "UPT_CAMPUS_EXPLORER_ADMIN_TOKEN";
-
 // SIGNUP ADMIN
 app.post("/signup", async (req, res) => {
   const { signupToken, email, password } = req.body;
 
-  // verific tokenul
-  if (signupToken !== ADMIN_SIGNUP_TOKEN) {
-    return res.status(401).json({
-      success: false,
-      message: "Invalid admin signup token"
-    });
-  }
-
   try {
-    // verific dacă emailul există deja
-    const exists = await pool.query(
-      "SELECT * FROM useradmin WHERE email = $1",
-      [email]
-    );
-
-    if (exists.rows.length > 0) {
-      return res.status(409).json({
+    if (signupToken !== ADMIN_SIGNUP_TOKEN) {
+      return res.status(401).json({
         success: false,
-        message: "Email already registered"
+        message: "Invalid admin signup token"
       });
     }
 
-    // hash parola
+    const check = await pool.query(
+      "SELECT id FROM useradmin WHERE email = $1 LIMIT 1",
+      [email]
+    );
+
+    if (check.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Email already exists"
+      });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // inserez în DB
     const result = await pool.query(
       "INSERT INTO useradmin (email, parola) VALUES ($1, $2) RETURNING id",
       [email, hashedPassword]
@@ -46,21 +31,56 @@ app.post("/signup", async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Admin account created successfully",
-      adminId: result.rows[0].id,
-      token: "admin-" + result.rows[0].id
+      message: "Admin created successfully",
+      adminId: result.rows[0].id
     });
 
   } catch (err) {
-    console.error(err);
+    console.error("SIGNUP ERROR:", err);
     return res.status(500).json({
       success: false,
       message: "Server error"
     });
   }
 });
+// LOGIN ADMIN
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
 
-// pornește serverul
-app.listen(process.env.PORT || 3000, () =>
-  console.log("Backend running on port " + (process.env.PORT || 3000))
-);
+  try {
+    const query = "SELECT * FROM useradmin WHERE email = $1 LIMIT 1";
+    const result = await pool.query(query, [email]);
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: "Email sau parolă invalidă"
+      });
+    }
+
+    const admin = result.rows[0];
+
+    const isPasswordValid = await bcrypt.compare(password, admin.parola);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: "Email sau parolă invalidă"
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Login reușit",
+      adminId: admin.id,
+      token: "admin-" + admin.id
+    });
+
+  } catch (err) {
+    console.error("EROARE LOGIN:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
