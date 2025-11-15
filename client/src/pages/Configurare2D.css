@@ -1,0 +1,53 @@
+.canvas-scroll {
+  max-width: 1200px;   /* cât vrei să fie fereastra vizibilă */
+  max-height: 800px;
+  margin: 0 auto 1.5rem;
+  border-radius: 12px;
+  overflow: auto;      /* AICI e cheia – poți scrola oricât în lume */
+  border: 2px solid #4c4c7a;
+}
+
+/* restul toolbar-ului de zoom (dacă nu le ai deja) */
+.config2d-toolbar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.zoom-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: none;
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: #2c2b4a;
+  color: #f5f5ff;
+}
+
+.zoom-btn:hover {
+  background: #3c3a63;
+}
+
+.zoom-label {
+  min-width: 60px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.zoom-reset {
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  background: #44427a;
+  color: #f5f5ff;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.zoom-reset:hover {
+  background: #5b5997;
+}
