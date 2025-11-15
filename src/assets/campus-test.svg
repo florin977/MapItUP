@@ -1,0 +1,32 @@
+<svg viewBox="0 0 400 400"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <rect id="library" x="40" y="40" width="130" height="80"
+        fill="#1a233a" stroke="#8b9bbf" stroke-width="4" rx="20" />
+  <text id="library-text" x="105" y="92" font-size="22" 
+        fill="white" text-anchor="middle" style="pointer-events: none;">
+    Library
+  </text>
+
+  <rect id="eng" x="230" y="40" width="130" height="80"
+        fill="#1a233a" stroke="#8b9bbf" stroke-width="4" rx="20" />
+  <text id="eng-text" x="295" y="92" font-size="22" 
+        fill="white" text-anchor="middle" style="pointer-events: none;">
+    Eng. Building
+  </text>
+
+  <rect id="student" x="40" y="220" width="130" height="80"
+        fill="#1a233a" stroke="#8b9bbf" stroke-width="4" rx="20" />
+  <text id="student-text" x="105" y="272" font-size="22" 
+        fill="white" text-anchor="middle" style="pointer-events: none;">
+    Student Center
+  </text>
+
+  <rect id="admin" x="230" y="220" width="130" height="80"
+        fill="#1a233a" stroke="#8b9bbf" stroke-width="4" rx="20" />
+  <text id="admin-text" x="295" y="272" font-size="22" 
+        fill="white" text-anchor="middle" style="pointer-events: none;">
+    Admin Office
+  </text>
+
+</svg>

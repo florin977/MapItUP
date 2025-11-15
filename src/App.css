@@ -1,0 +1,239 @@
+.app-root {
+  min-height: 100vh;
+}
+
+/* PAGINA AUTH (LOGIN / SIGNUP) */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: rgba(10, 10, 26, 0.92);
+  border-radius: 24px;
+  padding: 32px 28px 28px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.auth-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  margin: 0 auto 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 28px;
+  background: radial-gradient(circle at 0 0, #ff9dff, #a855ff, #4c1d95);
+}
+
+.auth-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.auth-subtitle {
+  font-size: 14px;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+/* Tabs */
+
+.auth-tabs {
+  display: flex;
+  background: rgba(15, 23, 42, 0.85);
+  border-radius: 999px;
+  padding: 3px;
+  margin-bottom: 20px;
+}
+
+.auth-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: rgba(148, 163, 184, 0.9);
+  font-size: 14px;
+  padding: 8px 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.auth-tab-active {
+  background: linear-gradient(135deg, #a855ff, #ec4899);
+  color: white;
+}
+
+/* Form */
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.auth-label span {
+  color: #e5e7eb;
+}
+
+.auth-input {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.7);
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #e5e7eb;
+  outline: none;
+  transition: border 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.auth-input::placeholder {
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.auth-input:focus {
+  border-color: #a855ff;
+  box-shadow: 0 0 0 1px rgba(168, 85, 255, 0.6);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.auth-help {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+/* Buttons */
+
+.auth-primary-btn {
+  margin-top: 4px;
+  width: 100%;
+  border: none;
+  border-radius: 999px;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, #a855ff, #ec4899);
+  color: white;
+  box-shadow: 0 10px 30px rgba(236, 72, 153, 0.4);
+  transition: transform 0.1s ease, box-shadow 0.1s ease, filter 0.1s ease;
+}
+
+.auth-primary-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 40px rgba(236, 72, 153, 0.5);
+  filter: brightness(1.02);
+}
+
+.auth-secondary-btn {
+  width: 100%;
+  border-radius: 999px;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  color: #e5e7eb;
+  transition: background 0.15s ease, color 0.15s ease, border 0.15s ease;
+}
+
+.auth-secondary-btn:hover {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(209, 213, 219, 0.8);
+}
+
+/* Divider */
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.9);
+  margin: 4px 0;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(148, 163, 184, 0.6),
+    transparent
+  );
+}
+
+/* Error */
+
+.auth-error {
+  font-size: 12px;
+  color: #fecaca;
+  background: rgba(153, 27, 27, 0.35);
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+/* PAGINI GOALE ADMIN / GUEST */
+
+.page-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.page-content {
+  max-width: 600px;
+  padding: 24px 28px;
+  border-radius: 22px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+}
+
+.page-content h1 {
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+
+.page-content p {
+  font-size: 14px;
+  color: rgba(209, 213, 219, 0.9);
+  margin-bottom: 16px;
+}
+
+.page-link {
+  font-size: 14px;
+  color: #a855ff;
+  text-decoration: none;
+}
+
+.page-link:hover {
+  text-decoration: underline;
+}
