@@ -1,5 +1,0 @@
-{
-  "name": "MapItUP",
-  "description": "A web application to visualize and navigate a university campus with 2D and 3D building layouts. Features an admin panel for map management and a guest view for route planning.",
-  "requestFramePermissions": []
-}
