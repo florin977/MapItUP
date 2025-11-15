@@ -1,2 +1,2 @@
-Doar temporar. test local.
+Doar temporar. test local cu imagini hardcodate.
 

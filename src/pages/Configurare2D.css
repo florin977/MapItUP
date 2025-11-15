@@ -1,0 +1,45 @@
+.config2d-container {
+  padding: 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  color: #fff;
+  font-family: "Inter", sans-serif;
+}
+
+.config2d-title {
+  text-align: center;
+  font-size: 2.3rem;
+  margin-bottom: 0.5rem;
+  font-weight: 800;
+}
+
+.config2d-subtitle {
+  text-align: center;
+  opacity: 0.8;
+  margin-bottom: 2rem;
+}
+
+.canvas-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.submit-btn {
+  padding: 1rem 2rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  border-radius: 12px;
+  display: block;
+  margin: 0 auto;
+  cursor: pointer;
+  background: linear-gradient(135deg, #6a5bff, #c41cff);
+  color: #fff;
+  border: none;
+  transition: 0.2s;
+}
+
+.submit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
