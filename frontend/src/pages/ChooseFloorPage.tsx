@@ -1,6 +1,8 @@
+// ==============================================
+// ChooseFloorPage.tsx - VERSION FINAL FUNCTIONAL
+// ==============================================
+
 import React, { useState, useRef } from "react";
-import camera1Outline from "../assets/camera1_alin_buna_outline.svg";
-import camera2Outline from "../assets/camera2_alin_buna_outline.svg";
 
 type ChooseFloorPageProps = {
   onBack: () => void;
@@ -13,14 +15,19 @@ type ChooseFloorPageProps = {
   }) => void;
 };
 
-const CANVAS_SIZE = 10000;      // “lumea” albă logică
-const SVG_RENDER_SIZE = 1000;   // baza pentru dimensiune
-const DRAG_SENSITIVITY = 4;     // 1 = normal, >1 = mai rapid
-const EXPORT_PADDING = 50;      // spațiu mic în jur la export
+// ================== CONSTANTE CANVAS ==================
+const CANVAS_SIZE = 10000;
+const SVG_RENDER_SIZE = 1000;
+const DRAG_SENSITIVITY = 4;
+const EXPORT_PADDING = 50;
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 5;
-const HANDLE_SIZE = 80;         // dimensiune handle în coordonate canvas
-const RESIZE_SENSITIVITY = 2;   // >1 = mai sensibil la resize
+const HANDLE_SIZE = 80;
+const RESIZE_SENSITIVITY = 2;
+
+// pentru backend – poți schimba cu env
+const API_BASE_URL =
+  (import.meta as any).env?.VITE_API_URL || "http://localhost:3000";
 
 const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
   onBack,
@@ -30,16 +37,17 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
   const [floorNumber, setFloorNumber] = useState<number>(0);
   const [lazFile, setLazFile] = useState<File | null>(null);
 
-  // zoom inițial 300% (3.0), maxim 500% (5.0)
+  // ⬅️ NOU: SVG upload state
+  const [camera1SVG, setCamera1SVG] = useState<string | null>(null);
+  const [camera2SVG, setCamera2SVG] = useState<string | null>(null);
+
   const [zoom, setZoom] = useState(3);
 
-  // poziția camerei mobile
   const [movablePos, setMovablePos] = useState<{ x: number; y: number }>({
     x: (CANVAS_SIZE - SVG_RENDER_SIZE) / 2,
     y: (CANVAS_SIZE - SVG_RENDER_SIZE) / 2,
   });
 
-  // scale pentru camera mobilă
   const [movableScale, setMovableScale] = useState(1);
 
   const movableWidth = SVG_RENDER_SIZE * movableScale;
@@ -48,6 +56,9 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
   const resizeStartRef = useRef<{
@@ -59,37 +70,161 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
 
   const svgContainerRef = useRef<SVGSVGElement | null>(null);
 
-  const handleSave = (e: React.FormEvent) => {
+  // ================== HANDLER UPLOAD SVG ==================
+
+  const handleUploadCameraSVG = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    setFn: (svg: string) => void
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => setFn(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  // ================== HANDLERE FORM ==================
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveChanges({
-      floorName,
-      floorNumber,
-      lazFile,
-      movableOffset: { x: movablePos.x, y: movablePos.y },
-      zoom,
-    });
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    if (!lazFile) {
+      setErrorMsg("Te rog selectează un fișier .laz.");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+
+      const formData = new FormData();
+      formData.append("floorName", floorName);
+      formData.append("floorNumber", floorNumber.toString());
+      formData.append("lazFile", lazFile);
+      formData.append("offsetX", movablePos.x.toString());
+      formData.append("offsetY", movablePos.y.toString());
+      formData.append("zoom", zoom.toString());
+
+      const res = await fetch(`${API_BASE_URL}/upload-floor`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        setErrorMsg(json?.msg || "Eroare la upload.");
+      } else {
+        setSuccessMsg("Floor salvat cu succes!");
+        onSaveChanges({
+          floorName,
+          floorNumber,
+          lazFile,
+          movableOffset: { x: movablePos.x, y: movablePos.y },
+          zoom,
+        });
+      }
+    } catch (err) {
+      console.error("Error uploading floor:", err);
+      setErrorMsg("Eroare neașteptată la salvare.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleZoomIn = () => {
-    setZoom((z) => Math.min(z + 0.1, 5)); // max 500%
+  // ================== EXPORT FINAL SVG ==================
+  const encodeSvgToBase64 = (svgText: string) => {
+    return window.btoa(unescape(encodeURIComponent(svgText)));
   };
 
-  const handleZoomOut = () => {
-    setZoom((z) => Math.max(z - 0.1, 0.1)); // min 10%
+  const handleFinish = async () => {
+    if (!camera1SVG || !camera2SVG) {
+      alert("Te rog încarcă ambele SVG-uri înainte de export.");
+      return;
+    }
+
+    try {
+      setIsExporting(true);
+
+      // Convertim base64 → text SVG
+      const svg1Text = atob(camera1SVG.split(",")[1]);
+      const svg2Text = atob(camera2SVG.split(",")[1]);
+
+      const svg1Base64 = encodeSvgToBase64(svg1Text);
+      const svg2Base64 = encodeSvgToBase64(svg2Text);
+
+      const href1 = `data:image/svg+xml;base64,${svg1Base64}`;
+      const href2 = `data:image/svg+xml;base64,${svg2Base64}`;
+
+      const fixedX = (CANVAS_SIZE - SVG_RENDER_SIZE) / 2;
+      const fixedY = (CANVAS_SIZE - SVG_RENDER_SIZE) / 2;
+
+      const cam1MinX = fixedX;
+      const cam1MinY = fixedY;
+      const cam1MaxX = fixedX + SVG_RENDER_SIZE;
+      const cam1MaxY = fixedY + SVG_RENDER_SIZE;
+
+      const cam2MinX = movablePos.x;
+      const cam2MinY = movablePos.y;
+      const cam2MaxX = movablePos.x + movableWidth;
+      const cam2MaxY = movablePos.y + movableHeight;
+
+      let minX = Math.min(cam1MinX, cam2MinX);
+      let minY = Math.min(cam1MinY, cam2MinY);
+      let maxX = Math.max(cam1MaxX, cam2MaxX);
+      let maxY = Math.max(cam1MaxY, cam2MaxY);
+
+      minX = Math.max(0, minX - EXPORT_PADDING);
+      minY = Math.max(0, minY - EXPORT_PADDING);
+      maxX = Math.min(CANVAS_SIZE, maxX + EXPORT_PADDING);
+      maxY = Math.min(CANVAS_SIZE, maxY + EXPORT_PADDING);
+
+      const croppedWidth = maxX - minX;
+      const croppedHeight = maxY - minY;
+
+      const exportFixedX = fixedX - minX;
+      const exportFixedY = fixedY - minY;
+      const exportMovableX = movablePos.x - minX;
+      const exportMovableY = movablePos.y - minY;
+
+      const exportSvg = `
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="${croppedWidth}"
+     height="${croppedHeight}"
+     viewBox="0 0 ${croppedWidth} ${croppedHeight}">
+  <rect x="0" y="0" width="${croppedWidth}" height="${croppedHeight}" fill="white" />
+  <image href="${href1}"
+         x="${exportFixedX}" y="${exportFixedY}"
+         width="${SVG_RENDER_SIZE}" height="${SVG_RENDER_SIZE}"
+         preserveAspectRatio="xMidYMid meet" />
+  <image href="${href2}"
+         x="${exportMovableX}" y="${exportMovableY}"
+         width="${movableWidth}" height="${movableHeight}"
+         preserveAspectRatio="xMidYMid meet" />
+</svg>`.trim();
+
+      const blob = new Blob([exportSvg], {
+        type: "image/svg+xml;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      const baseName = floorName.trim() || "floor";
+      a.href = url;
+      a.download = `${baseName}_combined_cropped.svg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error exporting combined SVG:", err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  const handleWheelZoom: React.WheelEventHandler<SVGSVGElement> = (e) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-
-    setZoom((z) => {
-      let nz = z + delta;
-      if (nz < 0.1) nz = 0.1;
-      if (nz > 5) nz = 5;
-      return nz;
-    });
-  };
-
+  // ================== DRAG & RESIZE ==================
   const handleMovableMouseDown: React.MouseEventHandler<SVGImageElement> = (
     e
   ) => {
@@ -119,16 +254,12 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
 
       const dxPixels = e.clientX - mouseX;
       const dyPixels = e.clientY - mouseY;
-
-      // folosim diagonala ca să fie natural
       const deltaPixels = (dxPixels + dyPixels) / 2;
-      // mărim sensibilitatea la resize
       const deltaLogical = (deltaPixels / zoom) * RESIZE_SENSITIVITY;
 
       let newWidth = startWidth + deltaLogical;
       let newScale = newWidth / SVG_RENDER_SIZE;
 
-      // limite de scalare și să nu iasă din canvas
       const maxScaleX = (CANVAS_SIZE - movablePos.x) / SVG_RENDER_SIZE;
       const maxScaleY = (CANVAS_SIZE - movablePos.y) / SVG_RENDER_SIZE;
       const maxAllowedScale = Math.min(maxScaleX, maxScaleY, MAX_SCALE);
@@ -174,147 +305,49 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
     resizeStartRef.current = null;
   };
 
-  // SVG-ul fix este centrat (și nu se scalează)
+  // ================== ZOOM ==================
+  const handleZoomIn = () => setZoom((z) => Math.min(z + 0.1, 5));
+  const handleZoomOut = () => setZoom((z) => Math.max(z - 0.1, 0.1));
+
+  // ================== RENDER ==================
   const fixedX = (CANVAS_SIZE - SVG_RENDER_SIZE) / 2;
   const fixedY = (CANVAS_SIZE - SVG_RENDER_SIZE) / 2;
-
-  // helper pt. btoa + unicode safe
-  const encodeSvgToBase64 = (svgText: string) => {
-    return window.btoa(unescape(encodeURIComponent(svgText)));
-  };
-
-  const handleFinish = async () => {
-    try {
-      setIsExporting(true);
-
-      // 1) Luăm conținutul SVG-urilor originale din assets
-      const [svg1Text, svg2Text] = await Promise.all([
-        fetch(camera1Outline).then((r) => r.text()),
-        fetch(camera2Outline).then((r) => r.text()),
-      ]);
-
-      const svg1Base64 = encodeSvgToBase64(svg1Text);
-      const svg2Base64 = encodeSvgToBase64(svg2Text);
-
-      const href1 = `data:image/svg+xml;base64,${svg1Base64}`;
-      const href2 = `data:image/svg+xml;base64,${svg2Base64}`;
-
-      // 2) Calculăm bounding box comun + padding
-      const cam1MinX = fixedX;
-      const cam1MinY = fixedY;
-      const cam1MaxX = fixedX + SVG_RENDER_SIZE;
-      const cam1MaxY = fixedY + SVG_RENDER_SIZE;
-
-      const cam2MinX = movablePos.x;
-      const cam2MinY = movablePos.y;
-      const cam2MaxX = movablePos.x + movableWidth;
-      const cam2MaxY = movablePos.y + movableHeight;
-
-      let minX = Math.min(cam1MinX, cam2MinX);
-      let minY = Math.min(cam1MinY, cam2MinY);
-      let maxX = Math.max(cam1MaxX, cam2MaxX);
-      let maxY = Math.max(cam1MaxY, cam2MaxY);
-
-      // padding
-      minX = Math.max(0, minX - EXPORT_PADDING);
-      minY = Math.max(0, minY - EXPORT_PADDING);
-      maxX = Math.min(CANVAS_SIZE, maxX + EXPORT_PADDING);
-      maxY = Math.min(CANVAS_SIZE, maxY + EXPORT_PADDING);
-
-      const croppedWidth = maxX - minX;
-      const croppedHeight = maxY - minY;
-
-      // repoziționăm imaginile în noul sistem
-      const exportFixedX = fixedX - minX;
-      const exportFixedY = fixedY - minY;
-      const exportMovableX = movablePos.x - minX;
-      const exportMovableY = movablePos.y - minY;
-
-      // 3) Construim SVG-ul exportat tăiat la fix (cu scale la camera2)
-      const exportSvg = `
-<svg xmlns="http://www.w3.org/2000/svg"
-     width="${croppedWidth}"
-     height="${croppedHeight}"
-     viewBox="0 0 ${croppedWidth} ${croppedHeight}">
-  <rect x="0" y="0" width="${croppedWidth}" height="${croppedHeight}" fill="white" />
-  <image href="${href1}"
-         x="${exportFixedX}" y="${exportFixedY}"
-         width="${SVG_RENDER_SIZE}" height="${SVG_RENDER_SIZE}"
-         preserveAspectRatio="xMidYMid meet" />
-  <image href="${href2}"
-         x="${exportMovableX}" y="${exportMovableY}"
-         width="${movableWidth}" height="${movableHeight}"
-         preserveAspectRatio="xMidYMid meet" />
-</svg>`.trim();
-
-      const blob = new Blob([exportSvg], {
-        type: "image/svg+xml;charset=utf-8",
-      });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      const baseName = floorName.trim() || "floor";
-      a.href = url;
-      a.download = `${baseName}_combined_cropped.svg`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Error exporting combined SVG:", err);
-    } finally {
-      setIsExporting(false);
-    }
-  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-start bg-gradient-to-br from-slate-900 via-slate-800 to-black p-10 gap-8">
 
-      {/* TITLU */}
       <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400 tracking-tight">
         Floor Configuration
       </h1>
 
-      {/* FORMULAR SUS */}
       <form
         onSubmit={handleSave}
-        className="bg-slate-900/50 backdrop-blur-md p-8 rounded-3xl shadow-2xl w-full max-w-2xl border border-slate-700 space-y-6"
+        className="bg-slate-900/50 p-8 rounded-3xl shadow-2xl w-full max-w-2xl border border-slate-700 space-y-6"
       >
-        {/* Floor Name */}
         <div className="flex flex-col">
-          <label className="text-slate-300 font-semibold mb-2">
-            Floor Name
-          </label>
+          <label className="text-slate-300 font-semibold mb-2">Floor Name</label>
           <input
             type="text"
             required
             value={floorName}
             onChange={(e) => setFloorName(e.target.value)}
-            placeholder="Ex: C119, A101..."
-            className="px-4 py-3 rounded-xl bg-slate-800 text-white border border-slate-700 focus:ring-2 focus:ring-violet-500 outline-none"
+            className="px-4 py-3 rounded-xl bg-slate-800 text-white border border-slate-700"
           />
         </div>
 
-        {/* Floor Number */}
         <div className="flex flex-col">
-          <label className="text-slate-300 font-semibold mb-2">
-            Floor Number
-          </label>
+          <label className="text-slate-300 font-semibold mb-2">Floor Number</label>
           <input
             type="number"
             required
             value={floorNumber}
             onChange={(e) => setFloorNumber(Number(e.target.value))}
-            placeholder="Ex: 0, 1, 2, -1"
-            className="px-4 py-3 rounded-xl bg-slate-800 text-white border border-slate-700 focus:ring-2 focus:ring-fuchsia-500 outline-none"
+            className="px-4 py-3 rounded-xl bg-slate-800 text-white border border-slate-700"
           />
         </div>
 
-        {/* LAZ file */}
         <div className="flex flex-col">
-          <label className="text-slate-300 font-semibold mb-2">
-            Upload .laz File
-          </label>
+          <label className="text-slate-300 font-semibold mb-2">Upload .laz File</label>
           <input
             type="file"
             accept=".laz"
@@ -324,56 +357,62 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
           />
         </div>
 
-        {/* SAVE + FINISH BUTTONS */}
+        {/* NOU - UPLOAD CAMERA1 */}
+        <div className="flex flex-col">
+          <label className="text-slate-300 font-semibold mb-2">Upload Camera 1 SVG</label>
+          <input
+            type="file"
+            accept=".svg"
+            required
+            onChange={(e) => handleUploadCameraSVG(e, setCamera1SVG)}
+            className="cursor-pointer bg-slate-800 text-white rounded-xl p-3 border border-slate-700"
+          />
+        </div>
+
+        {/* NOU - UPLOAD CAMERA2 */}
+        <div className="flex flex-col">
+          <label className="text-slate-300 font-semibold mb-2">Upload Camera 2 SVG</label>
+          <input
+            type="file"
+            accept=".svg"
+            required
+            onChange={(e) => handleUploadCameraSVG(e, setCamera2SVG)}
+            className="cursor-pointer bg-slate-800 text-white rounded-xl p-3 border border-slate-700"
+          />
+        </div>
+
+        {errorMsg && <p className="text-sm text-red-400 font-medium">{errorMsg}</p>}
+        {successMsg && <p className="text-sm text-emerald-400 font-medium">{successMsg}</p>}
+
         <div className="flex gap-4 pt-2">
           <button
             type="submit"
-            className="flex-1 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-xl text-white font-bold text-lg hover:scale-[1.02] transition shadow-xl"
+            disabled={isSaving}
+            className="flex-1 py-3 rounded-xl bg-violet-500 text-white font-bold text-lg"
           >
-            Save Changes
+            {isSaving ? "Saving..." : "Save Changes"}
           </button>
 
           <button
             type="button"
             onClick={handleFinish}
             disabled={isExporting}
-            className={`flex-1 py-3 rounded-xl font-bold text-lg transition shadow-xl ${
-              isExporting
-                ? "bg-slate-700 text-slate-400 cursor-wait"
-                : "bg-emerald-500 text-white hover:scale-[1.02]"
-            }`}
+            className="flex-1 py-3 rounded-xl bg-emerald-500 text-white font-bold text-lg"
           >
             {isExporting ? "Exporting..." : "FINISH"}
           </button>
         </div>
       </form>
 
-      {/* CANVAS CU FUNDAL ALB + SVG-URI */}
       <div className="w-full max-w-5xl flex flex-col gap-4">
-        {/* Controale zoom */}
         <div className="flex items-center justify-between">
           <div className="flex gap-2 items-center">
-            <button
-              type="button"
-              onClick={handleZoomOut}
-              className="px-3 py-1 rounded-lg bg-slate-800 text-white text-sm shadow hover:bg-slate-700"
-            >
-              -
-            </button>
-            <span className="text-slate-200 text-sm">
-              Zoom: {(zoom * 100).toFixed(0)}%
-            </span>
-            <button
-              type="button"
-              onClick={handleZoomIn}
-              className="px-3 py-1 rounded-lg bg-slate-800 text-white text-sm shadow hover:bg-slate-700"
-            >
-              +
-            </button>
+            <button onClick={handleZoomOut} className="px-3 py-1 bg-slate-800 text-white rounded-lg">-</button>
+            <span className="text-slate-200">Zoom: {(zoom * 100).toFixed(0)}%</span>
+            <button onClick={handleZoomIn} className="px-3 py-1 bg-slate-800 text-white rounded-lg">+</button>
           </div>
         </div>
 
-        {/* Zona albă cu SVG-uri */}
         <div className="w-full aspect-square bg-white rounded-3xl shadow-2xl overflow-hidden flex items-center justify-center">
           <svg
             ref={svgContainerRef}
@@ -383,55 +422,47 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUpOrLeave}
             onMouseLeave={handleMouseUpOrLeave}
-            onWheel={handleWheelZoom}
             style={{
               cursor: isDragging || isResizing ? "grabbing" : "default",
               transform: `scale(${zoom})`,
               transformOrigin: "center center",
             }}
           >
-            {/* fundal alb logic */}
-            <rect
-              x={0}
-              y={0}
-              width={CANVAS_SIZE}
-              height={CANVAS_SIZE}
-              fill="white"
-            />
+            <rect x={0} y={0} width={CANVAS_SIZE} height={CANVAS_SIZE} fill="white" />
 
-            {/* SVG FIX – centrat */}
-            <image
-              href={camera1Outline}
-              x={fixedX}
-              y={fixedY}
-              width={SVG_RENDER_SIZE}
-              height={SVG_RENDER_SIZE}
-              preserveAspectRatio="xMidYMid meet"
-              opacity={0.9}
-            />
+            {/* CAM1 */}
+            {camera1SVG && (
+              <image
+                href={camera1SVG}
+                x={fixedX}
+                y={fixedY}
+                width={SVG_RENDER_SIZE}
+                height={SVG_RENDER_SIZE}
+                opacity={0.9}
+              />
+            )}
 
-            {/* SVG MOBIL – mutabil cu drag & resize */}
-            <image
-              href={camera2Outline}
-              x={movablePos.x}
-              y={movablePos.y}
-              width={movableWidth}
-              height={movableHeight}
-              preserveAspectRatio="xMidYMid meet"
-              opacity={0.8}
-              style={{ cursor: "grab" }}
-              onMouseDown={handleMovableMouseDown}
-            />
+            {/* CAM2 */}
+            {camera2SVG && (
+              <image
+                href={camera2SVG}
+                x={movablePos.x}
+                y={movablePos.y}
+                width={movableWidth}
+                height={movableHeight}
+                style={{ cursor: "grab" }}
+                opacity={0.8}
+                onMouseDown={handleMovableMouseDown}
+              />
+            )}
 
-            {/* HANDLE DE RESIZE – colț dreapta-jos al camerei mobile (invizibil) */}
+            {/* HANDLE */}
             <rect
               x={movablePos.x + movableWidth - HANDLE_SIZE}
               y={movablePos.y + movableHeight - HANDLE_SIZE}
               width={HANDLE_SIZE}
               height={HANDLE_SIZE}
               fill="transparent"
-              stroke="transparent"
-              strokeWidth={0}
               style={{ cursor: "se-resize" }}
               onMouseDown={handleResizeMouseDown}
             />
@@ -439,11 +470,7 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
         </div>
       </div>
 
-      {/* BACK BUTTON */}
-      <button
-        onClick={onBack}
-        className="mt-4 px-6 py-3 rounded-xl bg-slate-800 text-white font-semibold text-lg shadow-lg hover:bg-slate-700 transition"
-      >
+      <button onClick={onBack} className="mt-4 px-6 py-3 rounded-xl bg-slate-800 text-white">
         ← Back to Admin
       </button>
     </div>
