@@ -29,9 +29,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
-// =========================
 // PostgreSQL
-// =========================
 const db = new Client({
   host: process.env.PGHOST,
   port: process.env.PGPORT,
@@ -44,9 +42,7 @@ db.connect()
   .then(() => console.log("Connected to PostgreSQL"))
   .catch((err) => console.error("DB ERROR:", err));
 
-// =========================
 // SIGNUP — CU TOKEN
-// =========================
 app.post("/signup", async (req, res) => {
   const { mail, parola, token } = req.body;
 
@@ -80,9 +76,7 @@ app.post("/signup", async (req, res) => {
   }
 });
 
-// =========================
 // LOGIN
-// =========================
 app.post("/login", async (req, res) => {
   const { mail, parola } = req.body;
 

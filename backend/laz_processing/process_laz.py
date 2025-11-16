@@ -1,9 +1,16 @@
-# process_laz.py
-# ===============================
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# process_laz.py - adaptat să meargă cu input .laz
 # Script adaptat pentru backend:
 # rulează așa:
-# python3 process_laz.py input.laz output.svg
-# ===============================
+#   python3 process_laz.py input.laz output.svg
+#
+# Face:
+#  - citește un .laz
+#  - calculează un concave hull (alpha-shape)
+#  - exportă conturul ca SVG
+#  - adaugă numele (variabila `NAME`) în interiorul conturului negru
 
 import sys
 import os
@@ -18,7 +25,9 @@ MAX_POINTS = 40000
 SCALE_PX_PER_M = 100.0   # 1 m = 100 px
 ALPHA_FACTOR = 3.0
 
-# ========= HELPERI =========
+# numele care va fi scris în interiorul SVG-ului
+NAME = "Test"
+
 
 def choose_alpha(points):
     xs = [p[0] for p in points]
@@ -60,7 +69,8 @@ def compute_concave_hull(xy_points):
     return a_shape
 
 
-def polygon_to_svg(polygon: Polygon, svg_path: str, scale_px_per_m: float):
+def polygon_to_svg(polygon: Polygon, svg_path: str, scale_px_per_m: float, label_text: str):
+    # bounds în coordonate "metri" (sau unitățile LAZ)
     minx, miny, maxx, maxy = polygon.bounds
     width_m = maxx - minx
     height_m = maxy - miny
@@ -68,21 +78,32 @@ def polygon_to_svg(polygon: Polygon, svg_path: str, scale_px_per_m: float):
     if width_m <= 0 or height_m <= 0:
         raise RuntimeError("Polygon degenerat")
 
+    # dimensiuni SVG în pixeli
     width_px = width_m * scale_px_per_m
     height_px = height_m * scale_px_per_m
 
     coords = list(polygon.exterior.coords)
 
-    # construim path SVG
+    # construim path SVG (conturul negru)
     path_cmds = []
     for i, (x, y) in enumerate(coords):
         sx = (x - minx) * scale_px_per_m
-        sy = (maxy - y) * scale_px_per_m
+        sy = (maxy - y) * scale_px_per_m  # inversare axă Y pentru SVG
         cmd = "M" if i == 0 else "L"
         path_cmds.append(f"{cmd} {sx:.2f} {sy:.2f}")
     path_cmds.append("Z")
-
     d_attr = " ".join(path_cmds)
+
+    # alegem un punct DIN INTERIORUL poligonului
+    interior_point = polygon.representative_point()
+    ipx, ipy = interior_point.x, interior_point.y
+
+    # convertim punctul interior în coordonate SVG
+    text_x = (ipx - minx) * scale_px_per_m
+    text_y = (maxy - ipy) * scale_px_per_m
+
+    # font-size aproximativ, raportat la dimensiunea camerei
+    font_size = min(width_px, height_px) / 15.0
 
     svg_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
@@ -92,6 +113,11 @@ def polygon_to_svg(polygon: Polygon, svg_path: str, scale_px_per_m: float):
         fill="none"
         stroke="black"
         stroke-width="2"/>
+  <text x="{text_x:.2f}" y="{text_y:.2f}"
+        font-size="{font_size:.2f}"
+        fill="black"
+        text-anchor="middle"
+        dominant-baseline="middle">{label_text}</text>
 </svg>
 """
 
@@ -130,7 +156,8 @@ def main():
         print(f"  Hull area = {hull.area:.2f}")
         print(f"  Saving SVG → {output_svg}")
 
-        polygon_to_svg(hull, output_svg, SCALE_PX_PER_M)
+        # aici folosim NAME ca label
+        polygon_to_svg(hull, output_svg, SCALE_PX_PER_M, NAME)
 
         print("  DONE.")
     except Exception as e:
