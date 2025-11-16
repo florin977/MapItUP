@@ -2,15 +2,15 @@
 # -*- coding: utf-8 -*-
 
 # process_laz.py - adaptat să meargă cu input .laz
-# Script adaptat pentru backend:
-# rulează așa:
+# Rulează așa:
 #   python3 process_laz.py input.laz output.svg
 #
 # Face:
 #  - citește un .laz
 #  - calculează un concave hull (alpha-shape)
 #  - exportă conturul ca SVG
-#  - adaugă numele (variabila `NAME`) în interiorul conturului negru
+#  - conturul e îngroșat
+#  - adaugă padding alb în jurul camerei
 
 import sys
 import os
@@ -25,8 +25,11 @@ MAX_POINTS = 40000
 SCALE_PX_PER_M = 100.0   # 1 m = 100 px
 ALPHA_FACTOR = 3.0
 
-# numele care va fi scris în interiorul SVG-ului
-NAME = "Test"
+# grosimea conturului în pixeli
+STROKE_WIDTH = 5.0
+
+# padding alb în jurul camerei (px)
+PADDING_PX = 20.0
 
 
 def choose_alpha(points):
@@ -64,12 +67,14 @@ def compute_concave_hull(xy_points):
         a_shape = max(a_shape.geoms, key=lambda p: p.area)
 
     if not isinstance(a_shape, Polygon):
-        raise RuntimeError(f"Alpha-shape nu a produs un Polygon (ci {a_shape.geom_type})")
+        raise RuntimeError(
+            f"Alpha-shape nu a produs un Polygon (ci {a_shape.geom_type})"
+        )
 
     return a_shape
 
 
-def polygon_to_svg(polygon: Polygon, svg_path: str, scale_px_per_m: float, label_text: str):
+def polygon_to_svg(polygon: Polygon, svg_path: str, scale_px_per_m: float):
     # bounds în coordonate "metri" (sau unitățile LAZ)
     minx, miny, maxx, maxy = polygon.bounds
     width_m = maxx - minx
@@ -78,46 +83,40 @@ def polygon_to_svg(polygon: Polygon, svg_path: str, scale_px_per_m: float, label
     if width_m <= 0 or height_m <= 0:
         raise RuntimeError("Polygon degenerat")
 
-    # dimensiuni SVG în pixeli
+    # dimensiuni SVG în pixeli pentru camera în sine
     width_px = width_m * scale_px_per_m
     height_px = height_m * scale_px_per_m
 
+    # adăugăm padding în jur
+    total_width = width_px + 2 * PADDING_PX
+    total_height = height_px + 2 * PADDING_PX
+
     coords = list(polygon.exterior.coords)
 
-    # construim path SVG (conturul negru)
+    # construim path SVG cu offset de padding
     path_cmds = []
     for i, (x, y) in enumerate(coords):
-        sx = (x - minx) * scale_px_per_m
-        sy = (maxy - y) * scale_px_per_m  # inversare axă Y pentru SVG
+        sx = (x - minx) * scale_px_per_m + PADDING_PX
+        sy = (maxy - y) * scale_px_per_m + PADDING_PX  # inversare axă Y
         cmd = "M" if i == 0 else "L"
         path_cmds.append(f"{cmd} {sx:.2f} {sy:.2f}")
     path_cmds.append("Z")
+
     d_attr = " ".join(path_cmds)
-
-    # alegem un punct DIN INTERIORUL poligonului
-    interior_point = polygon.representative_point()
-    ipx, ipy = interior_point.x, interior_point.y
-
-    # convertim punctul interior în coordonate SVG
-    text_x = (ipx - minx) * scale_px_per_m
-    text_y = (maxy - ipy) * scale_px_per_m
-
-    # font-size aproximativ, raportat la dimensiunea camerei
-    font_size = min(width_px, height_px) / 15.0
 
     svg_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="{width_px:.2f}" height="{height_px:.2f}"
-     viewBox="0 0 {width_px:.2f} {height_px:.2f}">
+     width="{total_width:.2f}" height="{total_height:.2f}"
+     viewBox="0 0 {total_width:.2f} {total_height:.2f}">
+  <!-- fundal alb -->
+  <rect x="0" y="0" width="{total_width:.2f}" height="{total_height:.2f}" fill="white"/>
+  <!-- contur cameră -->
   <path d="{d_attr}"
         fill="none"
         stroke="black"
-        stroke-width="2"/>
-  <text x="{text_x:.2f}" y="{text_y:.2f}"
-        font-size="{font_size:.2f}"
-        fill="black"
-        text-anchor="middle"
-        dominant-baseline="middle">{label_text}</text>
+        stroke-width="{STROKE_WIDTH:.2f}"
+        stroke-linejoin="round"
+        stroke-linecap="round"/>
 </svg>
 """
 
@@ -137,11 +136,11 @@ def main():
         print(f"Input .laz not found: {input_laz}")
         sys.exit(1)
 
-    print(f"==============================")
-    print(f"Processing single LAZ:")
+    print("==============================")
+    print("Processing single LAZ:")
     print(f"  input  = {input_laz}")
     print(f"  output = {output_svg}")
-    print(f"==============================")
+    print("==============================")
 
     try:
         las = laspy.read(input_laz)
@@ -156,8 +155,7 @@ def main():
         print(f"  Hull area = {hull.area:.2f}")
         print(f"  Saving SVG → {output_svg}")
 
-        # aici folosim NAME ca label
-        polygon_to_svg(hull, output_svg, SCALE_PX_PER_M, NAME)
+        polygon_to_svg(hull, output_svg, SCALE_PX_PER_M)
 
         print("  DONE.")
     except Exception as e:
