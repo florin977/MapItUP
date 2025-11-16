@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Room Path Editor with 3D Mapping</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Room Path Editor</h1>
+            <p class="subtitle">3D Indoor Navigation Mapping Tool</p>
+        </header>
+
+        <section class="controls-section">
+            <div class="control-group">
+                <label for="roomFile" class="file-label">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    Load Room JSON
+                    <input type="file" id="roomFile" accept=".json">
+                </label>
+                
+                <button id="runDijkstra" class="btn btn-primary">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                    Find Path
+                </button>
+                
+                <select id="selectPathRoom" class="room-select">
+                    <option>No path selected</option>
+                </select>
+            </div>
+        </section>
+
+        <div id="status" class="status"></div>
+
+        <section class="info-section">
+            <div class="info-box">
+                <h3>Instructions</h3>
+                <ol>
+                    <li>Load a room JSON grid with transform data from the Python script</li>
+                    <li>Save metadata including name, adjacent rooms, and optional 3D model</li>
+                    <li>Set entrances by clicking cells, then selecting direction</li>
+                    <li>Run Dijkstra algorithm to find the path and visualize in 3D</li>
+                </ol>
+            </div>
+            
+            <div class="info-box">
+                <h4>Loaded Rooms</h4>
+                <p id="roomList" class="room-list">None</p>
+            </div>
+        </section>
+
+        <section class="canvas-section">
+            <div class="canvas-wrapper">
+                <h3>Room Grid Editor</h3>
+                <div class="coord-info" id="coordInfo">
+                    Hover over grid cells to see 3D coordinates
+                </div>
+                <canvas id="gridCanvas" width="600" height="400"></canvas>
+            </div>
+        </section>
+
+        <section class="viewer-section">
+            <h3>3D Room Model Viewer</h3>
+            <label for="freeModelFile" class="file-label secondary">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                Load 3D Model (.glb)
+                <input type="file" id="freeModelFile" accept=".glb">
+            </label>
+            <div id="modelContainer"></div>
+        </section>
+    </div>
+
+    <!-- Metadata Popup -->
+    <div id="popup" class="modal">
+        <div class="modal-content">
+            <h3>Room Metadata</h3>
+            <div class="form-group">
+                <label for="nameField">Room Name</label>
+                <input type="text" id="nameField" placeholder="Enter room name">
+            </div>
+            <div class="form-group">
+                <label for="floorField">Floor Level</label>
+                <input type="number" id="floorField" min="0" value="0">
+            </div>
+            <div class="form-group">
+                <label for="adjacentField">Adjacent Rooms</label>
+                <input type="text" id="adjacentField" placeholder="Comma-separated room names">
+            </div>
+            <div class="form-group">
+                <label for="modelFile">3D Model (.glb)</label>
+                <input type="file" id="modelFile" accept=".glb">
+            </div>
+            <div class="form-group">
+                <label for="transformFile">Transform JSON</label>
+                <input type="file" id="transformFile" accept=".json">
+            </div>
+            <div class="modal-actions">
+                <button id="saveBtn" class="btn btn-primary">Save</button>
+                <button id="cancelBtn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Arrow Direction Picker -->
+    <div id="arrowPicker" class="modal">
+        <div class="modal-content small">
+            <h3>Pick Direction</h3>
+            <canvas id="arrowCanvas" width="120" height="120"></canvas>
+            <div class="modal-actions">
+                <button id="arrowSaveBtn" class="btn btn-primary">Save Direction</button>
+                <button id="arrowCancelBtn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    
+    <script type="module" src="main.js"></script>
+</body>
+</html>

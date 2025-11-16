@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Room Path Editor with 3D Mapping</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px;
+        }
+
+        canvas {
+            border: 1px solid #888;
+            cursor: crosshair;
+            margin: 10px;
+        }
+
+        #popup,
+        #arrowPicker {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #fff;
+            border: 1px solid #aaa;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        label {
+            display: block;
+            margin-top: 8px;
+        }
+
+        input[type="text"] {
+            width: 250px;
+            padding: 4px;
+        }
+
+        button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+
+        #modelContainer {
+            width: 800px;
+            height: 600px;
+            border: 1px solid #888;
+            margin: 20px;
+            background: #f0f0f0;
+        }
+
+        .status {
+            margin: 10px;
+            padding: 10px;
+            background: #e8f5e9;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .error {
+            background: #ffebee;
+        }
+
+        #arrowPicker {
+            width: 120px;
+            height: 160px;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            padding: 15px;
+            margin: 10px;
+            border-radius: 5px;
+            max-width: 800px;
+        }
+
+        .coord-info {
+            background: #fff3e0;
+            padding: 10px;
+            margin: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>Room Metadata Editor with 3D Mapping</h2>
+
+    <div>
+        <input type="file" id="roomFile" accept=".json">
+        <button id="runDijkstra">Run Dijkstra</button>
+        <select id="selectPathRoom"></select>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div class="info-box">
+        <h4 style="margin-top: 0;">Instructions:</h4>
+        <ol style="margin: 5px 0;">
+            <li>Load a room JSON grid with transform data (from Python script).</li>
+            <li>Save metadata (name, adjacent rooms, optional 3D model).</li>
+            <li>Set entrances by clicking cells, then selecting direction.</li>
+            <li>Run Dijkstra to find the path and see it in 2D and 3D.</li>
+        </ol>
+        <p style="margin: 5px 0;"><strong>Loaded rooms:</strong> <span id="roomList">None</span></p>
+    </div>
+
+    <div class="coord-info" id="coordInfo">
+        Hover over grid cells to see 3D coordinates
+    </div>
+
+    <canvas id="gridCanvas" width="600" height="400"></canvas>
+
+    <h3>Full Path Display (2D)</h3>
+    <canvas id="pathCanvas" width="800" height="300"></canvas>
+
+    <h3>3D Room Model Viewer (Aligned)</h3>
+    <input type="file" id="freeModelFile" accept=".glb">
+    <div id="modelContainer"></div>
+
+    <div id="popup">
+        <h4>Room Metadata</h4>
+        <label>Name: <input type="text" id="nameField"></label>
+        <label>Floor: <input type="number" id="floorField" min="0" value="0"></label>
+        <label>Adjacent Rooms (comma-separated): <input type="text" id="adjacentField"></label>
+        <label>3D Model (.glb): <input type="file" id="modelFile" accept=".glb"></label>
+        <label>Transform JSON: <input type="file" id="transformFile" accept=".json"></label>
+        <button id="saveBtn">Save</button>
+        <button id="cancelBtn">Cancel</button>
+    </div>
+
+    <div id="arrowPicker">
+        <h4 style="margin-top:0;">Pick Direction</h4>
+        <canvas id="arrowCanvas" width="120" height="120"></canvas>
+        <button id="arrowSaveBtn">Save Direction</button>
+        <button id="arrowCancelBtn">Cancel</button>
+    </div>
+
+    <script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ===== Grid Transform Class =====
+        class GridTransform {
+            constructor(transformData) {
+                this.cellSize = transformData.cell_size;
+                this.gridShape = transformData.grid_shape;
+                this.worldBounds = transformData.world_bounds;
+                this.centerOffset = transformData.center_offset;
+            }
+
+            gridToWorld(i, j) {
+                const x = this.worldBounds.x_min + (j + 0.5) * this.cellSize;
+                const y = this.worldBounds.y_min + (i + 0.5) * this.cellSize;
+                const z = this.worldBounds.z_floor;
+                return { x, y, z };
+            }
+
+            worldToGrid(x, y) {
+                const i = Math.floor((y - this.worldBounds.y_min) / this.cellSize);
+                const j = Math.floor((x - this.worldBounds.x_min) / this.cellSize);
+                return { i, j };
+            }
+
+            isValidCell(i, j) {
+                return i >= 0 && i < this.gridShape.rows && j >= 0 && j < this.gridShape.cols;
+            }
+
+            gridDirToWorld(gridDir) {
+                return {
+                    x: gridDir.x * this.cellSize,
+                    y: gridDir.y * this.cellSize,
+                    z: 0
+                };
+            }
+        }
+
+        // ===== DOM Elements =====
+        const canvas = document.getElementById("gridCanvas");
+        const ctx = canvas.getContext("2d");
+        const pathCanvas = document.getElementById("pathCanvas");
+        const pathCtx = pathCanvas.getContext("2d");
+        const modelContainer = document.getElementById("modelContainer");
+        const statusDiv = document.getElementById("status");
+        const coordInfo = document.getElementById("coordInfo");
+
+        const arrowPicker = document.getElementById("arrowPicker");
+        const arrowCanvas = document.getElementById("arrowCanvas");
+        const arrowCtx = arrowCanvas.getContext("2d");
+        const arrowSaveBtn = document.getElementById("arrowSaveBtn");
+        const arrowCancelBtn = document.getElementById("arrowCancelBtn");
+
+        let gridData = [];
+        let currentFile = null;
+        let metadata = [];
+        let selectedRoom = null;
+        let currentModelObjects = [];
+        let pathLineObject = null;
+        let lastPath = [];
+        let currentTransform = null;
+
+        const cellSize = 20;
+        let tempEntrance = null;
+
+        // ===== Status messages =====
+        function showStatus(message, isError = false) {
+            statusDiv.textContent = message;
+            statusDiv.className = isError ? 'status error' : 'status';
+            statusDiv.style.display = "block";
+            setTimeout(() => { statusDiv.style.display = "none"; }, 3000);
+        }
+
+        // ===== Upload room =====
+        document.getElementById("roomFile").addEventListener("change", async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            try {
+                currentFile = file.name;
+                const text = await file.text();
+                const data = JSON.parse(text);
+
+                // Check if it has transform data (new format)
+                if (data.transform) {
+                    gridData = data.grid;
+                    currentTransform = new GridTransform(data.transform);
+                    showStatus(`Loaded ${currentFile} with 3D transform data`);
+                } else if (Array.isArray(data)) {
+                    // Old format - just grid
+                    gridData = data;
+                    currentTransform = null;
+                    showStatus(`Loaded ${currentFile} (no transform data)`);
+                } else {
+                    throw new Error("Invalid grid format");
+                }
+
+                if (!Array.isArray(gridData) || !gridData.length || !Array.isArray(gridData[0]))
+                    throw new Error("Invalid grid format");
+
+                drawGrid();
+                showPopup();
+            } catch (err) {
+                showStatus(`Error: ${err.message}`, true);
+                console.error(err);
+            }
+        });
+
+        // ===== Metadata popup =====
+        function showPopup() {
+            const popup = document.getElementById("popup");
+            popup.style.display = "block";
+            const existingRoom = metadata.find(r => r.file === currentFile);
+            if (existingRoom) {
+                document.getElementById("nameField").value = existingRoom.name;
+                document.getElementById("floorField").value = existingRoom.floor || 0;
+                document.getElementById("adjacentField").value = existingRoom.adjacent.join(", ");
+            } else {
+                document.getElementById("nameField").value = currentFile.split(".")[0];
+                document.getElementById("adjacentField").value = "";
+                document.getElementById("floorField").value = 0;
+            }
+            document.getElementById("modelFile").value = "";
+        }
+
+        // ===== Save metadata =====
+        document.getElementById("saveBtn").addEventListener("click", async () => {
+            const name = document.getElementById("nameField").value.trim();
+            if (!name) { showStatus("Room name is required", true); return; }
+
+            const floor = parseInt(document.getElementById("floorField").value) || 0;
+
+            const adjacent = document.getElementById("adjacentField").value.split(",").map(s => s.trim()).filter(s => s);
+            const modelFile = document.getElementById("modelFile").files[0];
+            let modelData = null;
+            if (modelFile) modelData = await modelFile.arrayBuffer();
+
+            // Load optional transform file
+            const transformFile = document.getElementById("transformFile").files[0];
+            let transformData = null;
+            if (transformFile) {
+                try {
+                    const text = await transformFile.text();
+                    const parsed = JSON.parse(text);
+                    transformData = new GridTransform(parsed);
+                    showStatus("Custom transform data loaded successfully");
+                } catch (err) {
+                    showStatus("Invalid transform JSON file", true);
+                    console.error(err);
+                }
+            }
+
+
+            metadata = metadata.filter(r => r.file !== currentFile);
+            metadata.push({
+                name,
+                floor,
+                file: currentFile,
+                grid: gridData,
+                transform: transformData || currentTransform,
+                entrances: {},
+                adjacent,
+                modelData
+            });
+
+            document.getElementById("popup").style.display = "none";
+            showStatus(`Saved room: ${name}`);
+            updateRoomList();
+            updatePathRoomSelect();
+            drawGrid();
+        });
+
+        document.getElementById("cancelBtn").addEventListener("click", () => {
+            document.getElementById("popup").style.display = "none";
+        });
+
+        // ===== Draw room grid =====
+        function drawGrid() {
+            if (!gridData.length) return;
+            const rows = gridData.length, cols = gridData[0].length;
+            canvas.width = cols * cellSize;
+            canvas.height = rows * cellSize;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    ctx.fillStyle = gridData[y][x] === 0 ? "#fff" : "#333";
+                    ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                }
+            }
+
+            const room = metadata.find(r => r.file === currentFile);
+            if (room) {
+                ctx.fillStyle = "red";
+                Object.values(room.entrances).forEach(e => {
+                    ctx.fillRect(e.x * cellSize, e.y * cellSize, cellSize, cellSize);
+                    if (e.dir) drawArrow2D(e.x, e.y, e.dir);
+                });
+            }
+
+            ctx.strokeStyle = "#ddd";
+            ctx.lineWidth = 0.5;
+            for (let y = 0; y <= rows; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, y * cellSize);
+                ctx.lineTo(cols * cellSize, y * cellSize);
+                ctx.stroke();
+            }
+            for (let x = 0; x <= cols; x++) {
+                ctx.beginPath();
+                ctx.moveTo(x * cellSize, 0);
+                ctx.lineTo(x * cellSize, rows * cellSize);
+                ctx.stroke();
+            }
+        }
+
+        // ===== Draw arrow on 2D grid =====
+        function drawArrow2D(cellX, cellY, dir) {
+            const cx = cellX * cellSize + cellSize / 2;
+            const cy = cellY * cellSize + cellSize / 2;
+            ctx.strokeStyle = "blue";
+            ctx.fillStyle = "blue";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + dir.x * cellSize / 2, cy + dir.y * cellSize / 2);
+            ctx.stroke();
+            const angle = Math.atan2(dir.y, dir.x);
+            const size = 5;
+            ctx.beginPath();
+            ctx.moveTo(cx + dir.x * cellSize / 2, cy + dir.y * cellSize / 2);
+            ctx.lineTo(cx + dir.x * cellSize / 2 - size * Math.cos(angle - Math.PI / 6),
+                cy + dir.y * cellSize / 2 - size * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(cx + dir.x * cellSize / 2 - size * Math.cos(angle + Math.PI / 6),
+                cy + dir.y * cellSize / 2 - size * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // ===== Mouse hover - show 3D coordinates =====
+        canvas.addEventListener("mousemove", e => {
+            if (!currentTransform || !gridData.length) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / cellSize);
+            const y = Math.floor((e.clientY - rect.top) / cellSize);
+
+            if (y >= 0 && y < gridData.length && x >= 0 && x < gridData[0].length) {
+                const worldPos = currentTransform.gridToWorld(y, x);
+                coordInfo.textContent = `Grid: (i=${y}, j=${x}) → 3D World: (x=${worldPos.x.toFixed(3)}, y=${worldPos.y.toFixed(3)}, z=${worldPos.z.toFixed(3)}) | Cell: ${gridData[y][x] === 0 ? 'FREE' : 'BLOCKED'}`;
+            }
+        });
+
+        // ===== Entrance selection =====
+        canvas.addEventListener("click", e => {
+            if (!currentFile) return;
+            const room = metadata.find(r => r.file === currentFile);
+            if (!room) { showStatus("Save metadata first", true); return; }
+
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / cellSize);
+            const y = Math.floor((e.clientY - rect.top) / cellSize);
+
+            if (gridData[y][x] !== 0) { showStatus("Cannot place entrance on wall", true); return; }
+            if (room.adjacent.length === 0) { showStatus("No adjacent rooms defined", true); return; }
+
+            tempEntrance = { x, y, roomName: room.name };
+
+            // Show 3D coordinates of selected entrance
+            if (room.transform) {
+                const worldPos = room.transform.gridToWorld(y, x);
+                showStatus(`Selected entrance at 3D: (${worldPos.x.toFixed(3)}, ${worldPos.y.toFixed(3)}, ${worldPos.z.toFixed(3)})`);
+            }
+
+            showArrowPicker();
+        });
+
+        // ===== Arrow picker =====
+        let selectedDir = { x: 0, y: -1 };
+        function showArrowPicker() {
+            arrowPicker.style.display = "block";
+            selectedDir = { x: 0, y: -1 };
+            drawArrowPicker();
+        }
+
+        function drawArrowPicker() {
+            arrowCtx.clearRect(0, 0, 120, 120);
+            arrowCtx.strokeStyle = "blue";
+            arrowCtx.fillStyle = "blue";
+            arrowCtx.lineWidth = 3;
+            const cx = 60, cy = 60;
+            arrowCtx.beginPath();
+            arrowCtx.moveTo(cx, cy);
+            arrowCtx.lineTo(cx + selectedDir.x * 50, cy + selectedDir.y * 50);
+            arrowCtx.stroke();
+            const angle = Math.atan2(selectedDir.y, selectedDir.x);
+            arrowCtx.beginPath();
+            arrowCtx.moveTo(cx + selectedDir.x * 50, cy + selectedDir.y * 50);
+            arrowCtx.lineTo(cx + selectedDir.x * 50 - 10 * Math.cos(angle - Math.PI / 6),
+                cy + selectedDir.y * 50 - 10 * Math.sin(angle - Math.PI / 6));
+            arrowCtx.lineTo(cx + selectedDir.x * 50 - 10 * Math.cos(angle + Math.PI / 6),
+                cy + selectedDir.y * 50 - 10 * Math.sin(angle + Math.PI / 6));
+            arrowCtx.closePath();
+            arrowCtx.fill();
+        }
+
+        arrowCanvas.addEventListener("mousemove", e => {
+            const rect = arrowCanvas.getBoundingClientRect();
+            const dx = e.clientX - rect.left - 60;
+            const dy = e.clientY - rect.top - 60;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len > 0) {
+                selectedDir = { x: dx / len, y: dy / len };
+                drawArrowPicker();
+            }
+        });
+
+        arrowSaveBtn.addEventListener("click", () => {
+            const room = metadata.find(r => r.name === tempEntrance.roomName);
+            const adjRoom = prompt(`Which adjacent room does this entrance lead to?\nOptions: ${room.adjacent.join(", ")}`);
+            if (!adjRoom || !room.adjacent.includes(adjRoom)) {
+                showStatus("Invalid adjacent room", true);
+                return;
+            }
+
+            room.entrances[adjRoom] = {
+                x: tempEntrance.x,
+                y: tempEntrance.y,
+                dir: selectedDir
+            };
+
+            // Log 3D world position if available
+            if (room.transform) {
+                const worldPos = room.transform.gridToWorld(tempEntrance.y, tempEntrance.x);
+                const worldDir = room.transform.gridDirToWorld(selectedDir);
+                console.log(`Entrance to ${adjRoom}:`, {
+                    grid: { i: tempEntrance.y, j: tempEntrance.x },
+                    world: worldPos,
+                    direction: selectedDir,
+                    worldDirection: worldDir
+                });
+            }
+
+            arrowPicker.style.display = "none";
+            tempEntrance = null;
+            drawGrid();
+        });
+
+        arrowCancelBtn.addEventListener("click", () => {
+            arrowPicker.style.display = "none";
+            tempEntrance = null;
+        });
+
+        // ===== Dijkstra =====
+        function runDijkstra(startName, endName) {
+            if (!metadata.find(r => r.name === startName) || !metadata.find(r => r.name === endName)) {
+                showStatus("Rooms not found", true);
+                return [];
+            }
+            const graph = {};
+            metadata.forEach(r => {
+                graph[r.name] = {};
+                r.adjacent.forEach(a => { graph[r.name][a] = 1; });
+            });
+            const dist = {}, prev = {};
+            Object.keys(graph).forEach(n => { dist[n] = Infinity; prev[n] = null; });
+            dist[startName] = 0;
+            const queue = Object.keys(graph);
+
+            while (queue.length) {
+                queue.sort((a, b) => dist[a] - dist[b]);
+                const u = queue.shift();
+                if (u === endName) break;
+                if (dist[u] === Infinity) break;
+                Object.entries(graph[u]).forEach(([v, w]) => {
+                    if (dist[u] + w < dist[v]) {
+                        dist[v] = dist[u] + w;
+                        prev[v] = u;
+                    }
+                });
+            }
+
+            if (dist[endName] === Infinity) {
+                showStatus("No path found", true);
+                return [];
+            }
+            const path = [];
+            let cur = endName;
+            while (cur) {
+                path.unshift(cur);
+                cur = prev[cur];
+            }
+            return path;
+        }
+
+        // ===== Update UI =====
+        function updateRoomList() {
+            const roomListSpan = document.getElementById("roomList");
+            roomListSpan.textContent = metadata.length === 0 ? "None" : metadata.map(r => r.name).join(", ");
+        }
+
+        function updatePathRoomSelect() {
+            const sel = document.getElementById("selectPathRoom");
+            sel.innerHTML = "";
+            if (lastPath.length === 0) {
+                const opt = document.createElement("option");
+                opt.textContent = "No path selected";
+                sel.appendChild(opt);
+                return;
+            }
+            lastPath.forEach(r => {
+                const opt = document.createElement("option");
+                opt.value = r;
+                opt.textContent = r;
+                sel.appendChild(opt);
+            });
+        }
+
+        // ===== Run Dijkstra button =====
+        document.getElementById("runDijkstra").addEventListener("click", () => {
+            if (metadata.length < 2) {
+                showStatus("Need at least 2 rooms", true);
+                return;
+            }
+            const startName = prompt("Enter start room name:");
+            if (!startName) return;
+            const endName = prompt("Enter end room name:");
+            if (!endName) return;
+            lastPath = runDijkstra(startName, endName);
+
+            if (lastPath.length > 0) {
+                showStatus(`Path found: ${lastPath.join(" → ")}`);
+                drawFullRoomPath3D();
+                drawFullPath2D();
+                updatePathRoomSelect();
+            }
+        });
+
+        // ===== 2D Path Drawing =====
+        function drawFullPath2D() {
+            pathCtx.clearRect(0, 0, pathCanvas.width, pathCanvas.height);
+            if (lastPath.length < 2) return;
+
+            const scale = cellSize;
+            pathCtx.strokeStyle = "blue";
+            pathCtx.lineWidth = 2;
+            pathCtx.beginPath();
+
+            let prevPoint = null;
+
+            for (let i = 0; i < lastPath.length; i++) {
+                const room = metadata.find(r => r.name === lastPath[i]);
+                if (!room) continue;
+                let point = null;
+
+                if (i === lastPath.length - 1) {
+                    point = { x: room.grid[0].length * scale / 2, y: room.grid.length * scale / 2 };
+                } else {
+                    const nextRoomName = lastPath[i + 1];
+                    const exit = room.entrances[nextRoomName];
+                    if (exit) point = { x: exit.x * scale + scale / 2, y: exit.y * scale + scale / 2 };
+                    else point = { x: room.grid[0].length * scale / 2, y: room.grid.length * scale / 2 };
+                }
+
+                if (!prevPoint) pathCtx.moveTo(point.x, point.y);
+                else pathCtx.lineTo(point.x, point.y);
+                prevPoint = point;
+            }
+
+            pathCtx.stroke();
+
+            pathCtx.fillStyle = "red";
+            lastPath.forEach((roomName, i) => {
+                const room = metadata.find(r => r.name === roomName);
+                if (!room) return;
+                let px = room.grid[0].length * scale / 2;
+                let py = room.grid.length * scale / 2;
+                if (i < lastPath.length - 1) {
+                    const nextRoomName = lastPath[i + 1];
+                    const exit = room.entrances[nextRoomName];
+
+                    if (exit && prevExitWorldPos) {
+                        drawRoomPath3D(room, { x: exit.x, y: exit.y }, { x: exit.x, y: exit.y });
+                    }
+                }
+                pathCtx.beginPath();
+                pathCtx.arc(px, py, 4, 0, Math.PI * 2);
+                pathCtx.fill();
+            });
+        }
+
+        // ===== 3D Viewer =====
+        let scene, camera, renderer, loader, controls;
+        init3D();
+
+        function init3D() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xcccccc);
+            camera = new THREE.PerspectiveCamera(60, modelContainer.clientWidth / modelContainer.clientHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(modelContainer.clientWidth, modelContainer.clientHeight);
+            modelContainer.appendChild(renderer.domElement);
+            loader = new GLTFLoader();
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(5, 10, 7.5);
+            scene.add(dirLight);
+            const ambLight = new THREE.AmbientLight(0x404040, 2);
+            scene.add(ambLight);
+            const gridHelper = new THREE.GridHelper(10, 10);
+            scene.add(gridHelper);
+
+            camera.position.set(3, 3, 5);
+            camera.lookAt(0, 0, 0);
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        async function loadGLBFromArrayBuffer(arrayBuffer) {
+            return new Promise((resolve, reject) => {
+                loader.parse(arrayBuffer, '', (gltf) => resolve(gltf.scene), err => reject(err));
+            });
+        }
+
+        // ===== Funcție auxiliară pentru săgeți 3D =====
+        function addArrow3D(fromGridPos, dir, transform, color = 0xff0000, length = 0.5) {
+            if (!transform) return null;
+
+            // Convertim coordonatele grid în 3D world
+            const worldPos = transform.gridToWorld(fromGridPos.y, fromGridPos.x);
+            // Mapare corectă: X = X, Z = Y din grid, Y = înălțime
+            const origin = new THREE.Vector3(worldPos.x, 0.05, worldPos.y);
+
+            // Direcție pe planul X-Z
+            const dir3D = dir ? new THREE.Vector3(dir.x, 0, dir.y).normalize() : new THREE.Vector3(0, 0, 1);
+
+            const arrow = new THREE.ArrowHelper(dir3D, origin, length, color);
+            scene.add(arrow);
+            currentModelObjects.push(arrow);
+            return arrow;
+        }
+
+
+        // ===== Draw 3D Path with Transform Data =====
+        async function drawFullRoomPath3D() {
+            // -------------------------------------------------------
+            // Cleanup
+            // -------------------------------------------------------
+            currentModelObjects.forEach(o => scene.remove(o));
+            currentModelObjects = [];
+            if (pathLineObject) {
+                scene.remove(pathLineObject);
+                pathLineObject = null;
+            }
+
+            if (lastPath.length < 2) return;
+
+            const floorHeight = 5;
+            const pathPositions = [];
+
+            // Dijkstra simplificat pe grid
+            function dijkstraGrid(grid, start, end) {
+                const rows = grid.length;
+                const cols = grid[0].length;
+                const dist = Array.from({ length: rows }, () => Array(cols).fill(Infinity));
+                const prev = Array.from({ length: rows }, () => Array(cols).fill(null));
+                const q = [];
+
+                dist[start.y][start.x] = 0;
+                q.push({ x: start.x, y: start.y });
+
+                const dirs = [
+                    { x: 1, y: 0 }, { x: -1, y: 0 },
+                    { x: 0, y: 1 }, { x: 0, y: -1 }
+                ];
+
+                while (q.length) {
+                    q.sort((a, b) => dist[a.y][a.x] - dist[b.y][b.x]);
+                    const cur = q.shift();
+                    if (cur.x === end.x && cur.y === end.y) break;
+
+                    for (const d of dirs) {
+                        const nx = cur.x + d.x, ny = cur.y + d.y;
+                        if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && grid[ny][nx] === 0) {
+                            if (dist[cur.y][cur.x] + 1 < dist[ny][nx]) {
+                                dist[ny][nx] = dist[cur.y][cur.x] + 1;
+                                prev[ny][nx] = cur;
+                                q.push({ x: nx, y: ny });
+                            }
+                        }
+                    }
+                }
+
+                // Reconstruiește path-ul
+                const path = [];
+                let p = end;
+                while (p) {
+                    path.unshift({ x: p.x, y: p.y });
+                    p = prev[p.y][p.x];
+                }
+                return path.length > 1 ? path : [];
+            }
+
+            // Helper săgeată 3D
+            function addArrow3D(fromGridPos, dir, transform, color = 0x00ff00, length = 0.5) {
+                if (!transform) return null;
+                const wp = transform.gridToWorld(fromGridPos.y, fromGridPos.x);
+                const origin = new THREE.Vector3(wp.x, 0.05, -wp.y);
+                const dir3D = dir ? new THREE.Vector3(dir.x, 0, -dir.y).normalize() : new THREE.Vector3(0, 0, -1);
+                const arrow = new THREE.ArrowHelper(dir3D, origin, length, color);
+                scene.add(arrow);
+                currentModelObjects.push(arrow);
+                return arrow;
+            }
+
+            // -------------------------------------------------------
+            // MAIN LOOP: procesăm fiecare cameră
+            // -------------------------------------------------------
+            let prevExitWorldPos = null;
+            let prevExitDir3D = null;
+            let cumulativeRotation = new THREE.Quaternion();
+
+            for (let i = 0; i < lastPath.length; i++) {
+                const roomName = lastPath[i];
+                const room = metadata.find(r => r.name === roomName);
+                if (!room) continue;
+
+                // Încarcă modelul camerei (GLB sau fallback)
+                let obj;
+                if (room.modelData) {
+                    obj = await loadGLBFromArrayBuffer(room.modelData);
+                } else {
+                    const cols = room.grid[0].length;
+                    const rows = room.grid.length;
+                    const cs = room.transform ? room.transform.cellSize : 0.1;
+                    obj = new THREE.Mesh(
+                        new THREE.BoxGeometry(cols * cs, 0.1, rows * cs),
+                        new THREE.MeshStandardMaterial({ color: 0x888888, wireframe: true })
+                    );
+                }
+
+                scene.add(obj);
+                currentModelObjects.push(obj);
+
+                if (i === 0) {
+                    // Prima cameră la origine
+                    obj.position.set(0, (room.floor || 0) * floorHeight, 0);
+                    obj.rotation.set(0, 0, 0);
+                    obj.updateMatrixWorld(true);
+
+                    // Pregătim ieșirea pentru următoarea cameră
+                    const nextRoomName = lastPath[1];
+                    if (nextRoomName && room.entrances[nextRoomName]) {
+                        const exit = room.entrances[nextRoomName];
+                        prevExitDir3D = new THREE.Vector3(exit.dir.x, 0, -exit.dir.y).normalize();
+                        const wp = room.transform.gridToWorld(exit.y, exit.x);
+                        prevExitWorldPos = new THREE.Vector3(wp.x, 0, -wp.y);
+                        addArrow3D({ x: exit.x, y: exit.y }, exit.dir, room.transform, 0x00ff00);
+
+                        // Traseu pe grid pentru prima cameră
+                        const entranceGrid = { x: 0, y: 0 }; // presupunem colțul 0,0 dacă nu e definit
+                        const pathGrid = dijkstraGrid(room.grid, entranceGrid, exit);
+                        pathGrid.forEach(p => {
+                            const wp2 = room.transform.gridToWorld(p.y, p.x);
+                            pathPositions.push(new THREE.Vector3(wp2.x, 0.1 + (room.floor || 0) * floorHeight, -wp2.y));
+                        });
+                    }
+                    continue;
+                }
+
+                // Alte camere: aliniem intrarea la ieșirea anterioară
+                const prevRoom = metadata.find(r => r.name === lastPath[i - 1]);
+                const curEntrance = room.entrances?.[prevRoom.name];
+
+                if (curEntrance && prevExitWorldPos && room.transform) {
+                    const curDir3D = new THREE.Vector3(curEntrance.dir.x, 0, -curEntrance.dir.y).normalize();
+                    const targetDir3D = prevExitDir3D.clone().multiplyScalar(-1).normalize();
+
+                    const q = new THREE.Quaternion().setFromUnitVectors(curDir3D, targetDir3D);
+                    q.premultiply(cumulativeRotation);
+
+                    obj.applyQuaternion(q);
+                    obj.updateMatrixWorld(true);
+                    cumulativeRotation.copy(q);
+
+                    const wpEntrance = room.transform.gridToWorld(curEntrance.y, curEntrance.x);
+                    const entranceRotated = new THREE.Vector3(wpEntrance.x, 0, -wpEntrance.y).applyQuaternion(q);
+                    const offset = new THREE.Vector3().subVectors(prevExitWorldPos, entranceRotated);
+                    obj.position.add(offset);
+                    obj.position.y = (room.floor || 0) * floorHeight;
+                    obj.updateMatrixWorld(true);
+
+                    // Calculăm ieșirea camerei curente
+                    const nextRoomName = lastPath[i + 1];
+                    if (nextRoomName && room.entrances[nextRoomName]) {
+                        const exit = room.entrances[nextRoomName];
+                        prevExitDir3D = new THREE.Vector3(exit.dir.x, 0, -exit.dir.y).normalize();
+                        const wpExit = room.transform.gridToWorld(exit.y, exit.x);
+                        const exitRotated = new THREE.Vector3(wpExit.x, 0, -wpExit.y).applyQuaternion(q).add(offset);
+                        prevExitWorldPos = exitRotated;
+
+                        // Adaugă săgeată
+                        addArrow3D({ x: exit.x, y: exit.y }, exit.dir, room.transform, 0x00ff00);
+
+                        // Traseu pe grid
+                        const pathGrid = dijkstraGrid(room.grid, curEntrance, exit);
+                        pathGrid.forEach(p => {
+                            const wp2 = room.transform.gridToWorld(p.y, p.x);
+                            const pos3D = new THREE.Vector3(wp2.x, 0.1 + (room.floor || 0) * floorHeight, -wp2.y).applyQuaternion(q).add(offset);
+                            pathPositions.push(pos3D);
+                        });
+                    }
+                } else {
+                    // Fallback: deplasăm puțin camera
+                    obj.position.copy(prevExitWorldPos.clone().add(new THREE.Vector3(1, 0, 0)));
+                    prevExitWorldPos = obj.position.clone();
+                }
+            }
+
+            // -------------------------------------------------------
+            // Linie albastră globală 3D
+            // -------------------------------------------------------
+            if (pathPositions.length >= 2) {
+                const lineMat = new THREE.LineBasicMaterial({ color: 0x0000ff });
+                const geom = new THREE.BufferGeometry().setFromPoints(pathPositions);
+                pathLineObject = new THREE.Line(geom, lineMat);
+                scene.add(pathLineObject);
+            }
+
+            // -------------------------------------------------------
+            // Auto-fit camera
+            // -------------------------------------------------------
+            if (currentModelObjects.length > 0) {
+                const box = new THREE.Box3();
+                currentModelObjects.forEach(o => {
+                    if (o.isMesh || o.isLine || o.isGroup) box.expandByObject(o);
+                });
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.z);
+                const fov = camera.fov * Math.PI / 180;
+                let dist = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.5;
+                camera.position.set(center.x + dist, center.y + dist, center.z + dist);
+                camera.lookAt(center);
+                controls.target.copy(center);
+                controls.update();
+                controls.enabled = true;
+            }
+        }
+
+
+        // Initialize
+        updateRoomList();
+        updatePathRoomSelect();
+    </script>
+</body>
+
+</html>

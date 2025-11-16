@@ -1,0 +1,19 @@
+{
+  "cell_size": 0.05,
+  "grid_shape": {
+    "rows": 81,
+    "cols": 70
+  },
+  "grid_origin_centered": true,
+  "grid_world_origin": {
+    "x0": -1.75,
+    "y0": -2.025,
+    "z_floor": -0.7021699892063806
+  },
+  "center_offset": {
+    "x": -0.2926013490306771,
+    "y": -0.1063244351080606,
+    "z": -0.5047901637412883
+  },
+  "note": "Centered grid: (ny/2, nx/2) corresponds to (0,0) in world coords."
+}

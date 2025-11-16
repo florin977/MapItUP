@@ -1,0 +1,20 @@
+{
+  "cell_size": 0.05,
+  "grid_shape": {
+    "rows": 608,
+    "cols": 673
+  },
+  "world_bounds": {
+    "x_min": -18.670432218024846,
+    "x_max": 14.973693500014816,
+    "y_min": -13.951154292449088,
+    "y_max": 16.4228708309973,
+    "z_floor": -1.251648955013937
+  },
+  "center_offset": {
+    "x": 1.8596122088657434,
+    "y": -1.2358629550266733,
+    "z": 0.04372401164351333
+  },
+  "note": "To convert grid (i,j) to world: x = x_min + (j+0.5)*cell_size, y = y_min + (i+0.5)*cell_size, z = z_floor"
+}
