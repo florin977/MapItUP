@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MapPinIcon } from '../components/icons/MapPinIcon';
 import { SearchIcon } from '../components/icons/SearchIcon';
@@ -14,17 +13,18 @@ import { Building, CampusEntrance } from '../types';
 import ViewTimetableModal from '../components/ViewTimetableModal';
 import GoogleMapsDirections from '../components/GoogleMapsDirections';
 
-type Floor = 'ground' | 'first' | 'second';
+const API_BASE = "http://localhost:3000";
 
 interface GuestMapPageProps {
   onBackToLogin: () => void;
   onSearch: (from: string, to: string) => void;
-  customMapSvgs: {
+  buildings: Building[];
+  // îl lăsăm opțional ca să nu se supere TS dacă mai e folosit pe undeva
+  customMapSvgs?: {
     ground: string | null;
     first: string | null;
     second: string | null;
   };
-  buildings: Building[];
 }
 
 interface RouteLeg {
@@ -33,6 +33,13 @@ interface RouteLeg {
   distance: string;
   instructions: string[];
   icon: React.ReactNode;
+}
+
+interface FloorFromDB {
+  id: number;
+  floor_number: number;
+  name: string;
+  svg: string | null;
 }
 
 type LocationPoint = {
@@ -44,13 +51,23 @@ type LocationPoint = {
     coords: { lat: number; lng: number };
 };
 
-const GuestMapPage: React.FC<GuestMapPageProps> = ({ onBackToLogin, onSearch, customMapSvgs, buildings }) => {
-    const [fromPoint, setFromPoint] = useState<LocationPoint | null>(null);
+const GuestMapPage: React.FC<GuestMapPageProps> = ({
+  onBackToLogin,
+  onSearch,
+  buildings,
+}) => {
+
+  const [fromPoint, setFromPoint] = useState<LocationPoint | null>(null);
     const [toPoint, setToPoint] = useState<LocationPoint | null>(null);
     const [routeDetails, setRouteDetails] = useState<{ leg: RouteLeg, totalTime: number, totalDistance: number } | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [is3DView, setIs3DView] = useState(false);
-    const [selectedFloor, setSelectedFloor] = useState<Floor>('ground');
+
+    // --- NEW: etaje din DB ---
+    const [floors, setFloors] = useState<FloorFromDB[]>([]);
+    const [selectedFloorNumber, setSelectedFloorNumber] = useState<number | null>(null);
+    const [currentFloorSvg, setCurrentFloorSvg] = useState<string | null>(null);
+
     const [selectedBuildingForTimetable, setSelectedBuildingForTimetable] = useState<Building | null>(null);
     const [activeSelection, setActiveSelection] = useState<'from' | 'to' | null>(null);
     const [selectingExternal, setSelectingExternal] = useState<'from' | 'to' | null>(null);
@@ -58,6 +75,48 @@ const GuestMapPage: React.FC<GuestMapPageProps> = ({ onBackToLogin, onSearch, cu
     const [showExternalRoute, setShowExternalRoute] = useState(false);
     const [selectedEntrance, setSelectedEntrance] = useState<CampusEntrance | null>(null);
     const mapContainerRef = useRef<HTMLElement>(null);
+
+      // ======================
+  // FLOORS din database
+  // ======================
+  useEffect(() => {
+    const loadFloors = async () => {
+  try {
+    console.log("Fetching floors from:", `${API_BASE}/floors`);
+    const resp = await fetch(`${API_BASE}/floors`);
+    console.log("Response status /floors:", resp.status);
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      console.error("Failed to load floors", text);
+      return;
+    }
+
+    const data: FloorFromDB[] = await resp.json();
+    console.log("Floors from DB:", data);
+    setFloors(data);
+
+    if (data.length > 0) {
+      setSelectedFloorNumber(data[0].floor_number);
+      setCurrentFloorSvg(data[0].svg);
+    }
+  } catch (err) {
+    console.error("Error loading floors:", err);
+  }
+};
+
+
+    loadFloors();
+  }, []);
+
+  useEffect(() => {
+    if (selectedFloorNumber == null) return;
+    const floor = floors.find((f) => f.floor_number === selectedFloorNumber);
+    if (floor) {
+      setCurrentFloorSvg(floor.svg);
+    }
+  }, [selectedFloorNumber, floors]);
+
 
     const handleBuildingClick = useCallback((buildingName: string) => {
         const building = buildings.find(b => b.name.toLowerCase() === buildingName.toLowerCase().trim());
@@ -104,7 +163,7 @@ const GuestMapPage: React.FC<GuestMapPageProps> = ({ onBackToLogin, onSearch, cu
         return () => {
             mapElement.removeEventListener('click', clickListener);
         };
-    }, [customMapSvgs, selectedFloor, handleBuildingClick]);
+    }, [handleBuildingClick]);
 
     const handleFindRoute = (e: React.FormEvent) => {
         e.preventDefault();
@@ -150,18 +209,34 @@ const GuestMapPage: React.FC<GuestMapPageProps> = ({ onBackToLogin, onSearch, cu
     };
     
     const renderMapContent = () => {
-        const svgContent = customMapSvgs[selectedFloor];
-        if (svgContent) return <g dangerouslySetInnerHTML={{ __html: svgContent }} />;
-        if (selectedFloor === 'ground') return <CampusMapSVG onBuildingClick={handleBuildingClick} />;
+        // avem SVG în DB pentru etajul selectat
+        if (currentFloorSvg) {
+            return <g dangerouslySetInnerHTML={{ __html: currentFloorSvg }} />;
+        }
+
+        // fallback: dacă nu e nimic în DB, poți să afișezi harta statică sau un mesaj
+        if (floors.length === 0) {
+            // încă nu avem nimic în DB → poți folosi CampusMapSVG ca înainte
+            return <CampusMapSVG onBuildingClick={handleBuildingClick} />;
+        }
+
         return (
             <g>
-                <rect x="0" y="0" width="800" height="600" fill="var(--map-bg)" />
-                <text x="400" y="300" textAnchor="middle" fontFamily="sans-serif" fontSize="20" fill="var(--map-text)">
-                    Map for {selectedFloor} floor is not available.
+                <rect x="0" y="0" width="800" height="600" fill="white" />
+                <text
+                    x="400"
+                    y="300"
+                    textAnchor="middle"
+                    fontFamily="sans-serif"
+                    fontSize="20"
+                    fill="black"
+                >
+                    No SVG saved for this floor yet.
                 </text>
             </g>
         );
     };
+
 
     const resetRoute = () => {
         setFromPoint(null);
@@ -426,28 +501,26 @@ const GuestMapPage: React.FC<GuestMapPageProps> = ({ onBackToLogin, onSearch, cu
         {/* Map Area */}
         <main ref={mapContainerRef} className="flex-1 bg-slate-200 dark:bg-black relative overflow-hidden">
           {/* Enhanced floating controls */}
-          <div className="absolute top-6 right-6 z-20 flex items-center space-x-3">
-            {!is3DView && (
+            <div className="absolute top-6 right-6 z-20 flex items-center space-x-3">
+            {!is3DView && floors.length > 0 && (
               <div className="bg-white/95 dark:bg-slate-800/90 backdrop-blur-xl p-2 rounded-2xl shadow-2xl shadow-indigo-500/20 dark:shadow-violet-500/10 border-2 border-violet-200/80 dark:border-slate-700/50 flex items-center space-x-2 animate-fadeIn">
-                {(['ground', 'first', 'second'] as const).map((floor) => {
-                    const floorLabel = floor === 'ground' ? 'G' : floor === 'first' ? '1' : '2';
-                    return (
-                        <button
-                            key={floor}
-                            onClick={() => setSelectedFloor(floor)}
-                            className={`px-4 py-2.5 text-sm font-bold rounded-xl transition-all duration-300 min-w-[3rem] ${
-                                selectedFloor === floor 
-                                  ? 'bg-gradient-to-br from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-500/50 scale-110' 
-                                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:scale-105'
-                            }`}
-                            title={`${floor.charAt(0).toUpperCase() + floor.slice(1)} Floor`}
-                        >
-                            {floorLabel}
-                        </button>
-                    )
-                })}
+                {floors.map((floor) => (
+                  <button
+                    key={floor.floor_number}
+                    onClick={() => setSelectedFloorNumber(floor.floor_number)}
+                    className={`px-4 py-2.5 text-sm font-bold rounded-xl transition-all duration-300 min-w-[3rem] ${
+                      selectedFloorNumber === floor.floor_number
+                        ? 'bg-gradient-to-br from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-500/50 scale-110'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:scale-105'
+                    }`}
+                    title={floor.name || `Floor ${floor.floor_number}`}
+                  >
+                    {floor.floor_number}
+                  </button>
+                ))}
               </div>
             )}
+
             <div className="bg-white/95 dark:bg-slate-800/90 backdrop-blur-xl p-2 rounded-2xl shadow-2xl shadow-indigo-500/20 dark:shadow-violet-500/10 border-2 border-violet-200/80 dark:border-slate-700/50 flex items-center space-x-2">
               <button 
                 onClick={() => setIs3DView(false)} 
@@ -534,7 +607,7 @@ const GuestMapPage: React.FC<GuestMapPageProps> = ({ onBackToLogin, onSearch, cu
                 building={selectedBuildingForTimetable}
                 onClose={() => setSelectedBuildingForTimetable(null)}
             />
-          )}
+          )} 
           
           {selectingExternal === 'from' && (
             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
@@ -587,7 +660,7 @@ const RouteLegDisplay: React.FC<{ leg: RouteLeg }> = ({ leg }) => (
                     </div>
                 </div>
             </div>
-        </div>
+        </div>        
         
         <div className="space-y-3 pl-1">
             {leg.instructions.map((step, index) => (
