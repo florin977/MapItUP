@@ -1,0 +1,1 @@
+Astea sunt in mare pentru a ajuta cu vizualizarea, ele sunt luate din db. 
