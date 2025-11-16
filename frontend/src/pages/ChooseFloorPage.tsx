@@ -1,10 +1,11 @@
 import React, { useState, useRef } from "react";
-import camera1Outline from "../assets/camera1_alin_buna_outline.svg";
-import camera2Outline from "../assets/camera2_alin_buna_outline.svg";
+
+const API_BASE = "http://localhost:3000";
 
 type ChooseFloorPageProps = {
   onBack: () => void;
-  onSaveChanges: (data: {
+  // îl facem opțional ca să nu mai crape dacă nu e trimis din părinte
+  onSaveChanges?: (data: {
     floorName: string;
     floorNumber: number;
     lazFile: File | null;
@@ -13,14 +14,14 @@ type ChooseFloorPageProps = {
   }) => void;
 };
 
-const CANVAS_SIZE = 10000;      // “lumea” albă logică
-const SVG_RENDER_SIZE = 1000;   // baza pentru dimensiune
-const DRAG_SENSITIVITY = 4;     // 1 = normal, >1 = mai rapid
-const EXPORT_PADDING = 50;      // spațiu mic în jur la export
+const CANVAS_SIZE = 10000;
+const SVG_RENDER_SIZE = 1000;
+const DRAG_SENSITIVITY = 4;
+const EXPORT_PADDING = 50;
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 5;
-const HANDLE_SIZE = 80;         // dimensiune handle în coordonate canvas
-const RESIZE_SENSITIVITY = 2;   // >1 = mai sensibil la resize
+const HANDLE_SIZE = 80;
+const RESIZE_SENSITIVITY = 2;
 
 const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
   onBack,
@@ -30,24 +31,26 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
   const [floorNumber, setFloorNumber] = useState<number>(0);
   const [lazFile, setLazFile] = useState<File | null>(null);
 
-  // zoom inițial 300% (3.0), maxim 500% (5.0)
   const [zoom, setZoom] = useState(3);
 
-  // poziția camerei mobile
   const [movablePos, setMovablePos] = useState<{ x: number; y: number }>({
     x: (CANVAS_SIZE - SVG_RENDER_SIZE) / 2,
     y: (CANVAS_SIZE - SVG_RENDER_SIZE) / 2,
   });
 
-  // scale pentru camera mobilă
   const [movableScale, setMovableScale] = useState(1);
-
   const movableWidth = SVG_RENDER_SIZE * movableScale;
   const movableHeight = SVG_RENDER_SIZE * movableScale;
 
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  // SVG-uri din backend
+  const [floorSvgText, setFloorSvgText] = useState<string | null>(null);
+  const [roomSvgText, setRoomSvgText] = useState<string | null>(null);
+  const [floorSvgDataUrl, setFloorSvgDataUrl] = useState<string | null>(null);
+  const [roomSvgDataUrl, setRoomSvgDataUrl] = useState<string | null>(null);
 
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
   const resizeStartRef = useRef<{
@@ -59,9 +62,75 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
 
   const svgContainerRef = useRef<SVGSVGElement | null>(null);
 
-  const handleSave = (e: React.FormEvent) => {
+  const fixedX = (CANVAS_SIZE - SVG_RENDER_SIZE) / 2;
+  const fixedY = (CANVAS_SIZE - SVG_RENDER_SIZE) / 2;
+
+  const encodeSvgToBase64 = (svgText: string) =>
+    window.btoa(unescape(encodeURIComponent(svgText)));
+
+  const svgTextToDataUrl = (svgText: string) =>
+    `data:image/svg+xml;base64,${encodeSvgToBase64(svgText)}`;
+
+  // ======================
+  // SAVE (fetch floor + procesare LAZ)
+  // ======================
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveChanges({
+    console.log("Save clicked", { floorName, floorNumber, lazFile });
+
+    // 1) floor SVG din backend (sau default)
+    try {
+      const resp = await fetch(`${API_BASE}/floors/${floorNumber}`);
+      console.log("GET /floors status:", resp.status);
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        console.error("GET /floors error body:", text);
+      } else {
+        const data = await resp.json();
+        console.log("GET /floors data:", data);
+
+        if (data.svg) {
+          setFloorSvgText(data.svg);
+          setFloorSvgDataUrl(svgTextToDataUrl(data.svg));
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching floor:", err);
+    }
+
+    // 2) procesare .laz -> SVG prin Python
+    if (lazFile) {
+      try {
+        const formData = new FormData();
+        formData.append("lazFile", lazFile);
+
+        const resp = await fetch(`${API_BASE}/process-laz`, {
+          method: "POST",
+          body: formData,
+        });
+
+        console.log("POST /process-laz status:", resp.status);
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          console.error("POST /process-laz error body:", text);
+        } else {
+          const data = await resp.json();
+          console.log("POST /process-laz data:", data);
+
+          if (data.svg) {
+            setRoomSvgText(data.svg);
+            setRoomSvgDataUrl(svgTextToDataUrl(data.svg));
+          }
+        }
+      } catch (err) {
+        console.error("Error processing LAZ:", err);
+      }
+    }
+
+    // notificăm părintele doar dacă a dat handler
+    onSaveChanges?.({
       floorName,
       floorNumber,
       lazFile,
@@ -70,12 +139,15 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
     });
   };
 
+  // ======================
+  // ZOOM
+  // ======================
   const handleZoomIn = () => {
-    setZoom((z) => Math.min(z + 0.1, 5)); // max 500%
+    setZoom((z) => Math.min(z + 0.1, 5));
   };
 
   const handleZoomOut = () => {
-    setZoom((z) => Math.max(z - 0.1, 0.1)); // min 10%
+    setZoom((z) => Math.max(z - 0.1, 0.1));
   };
 
   const handleWheelZoom: React.WheelEventHandler<SVGSVGElement> = (e) => {
@@ -90,6 +162,9 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
     });
   };
 
+  // ======================
+  // DRAG + RESIZE
+  // ======================
   const handleMovableMouseDown: React.MouseEventHandler<SVGImageElement> = (
     e
   ) => {
@@ -120,15 +195,12 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
       const dxPixels = e.clientX - mouseX;
       const dyPixels = e.clientY - mouseY;
 
-      // folosim diagonala ca să fie natural
       const deltaPixels = (dxPixels + dyPixels) / 2;
-      // mărim sensibilitatea la resize
       const deltaLogical = (deltaPixels / zoom) * RESIZE_SENSITIVITY;
 
       let newWidth = startWidth + deltaLogical;
       let newScale = newWidth / SVG_RENDER_SIZE;
 
-      // limite de scalare și să nu iasă din canvas
       const maxScaleX = (CANVAS_SIZE - movablePos.x) / SVG_RENDER_SIZE;
       const maxScaleY = (CANVAS_SIZE - movablePos.y) / SVG_RENDER_SIZE;
       const maxAllowedScale = Math.min(maxScaleX, maxScaleY, MAX_SCALE);
@@ -174,32 +246,21 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
     resizeStartRef.current = null;
   };
 
-  // SVG-ul fix este centrat (și nu se scalează)
-  const fixedX = (CANVAS_SIZE - SVG_RENDER_SIZE) / 2;
-  const fixedY = (CANVAS_SIZE - SVG_RENDER_SIZE) / 2;
-
-  // helper pt. btoa + unicode safe
-  const encodeSvgToBase64 = (svgText: string) => {
-    return window.btoa(unescape(encodeURIComponent(svgText)));
-  };
-
+  // ======================
+  // FINISH (combină SVG + salvează în DB)
+  // ======================
   const handleFinish = async () => {
+    if (!floorSvgText || !roomSvgText) {
+      console.error("Nu am ambele SVG-uri (floor + room) pentru export.");
+      return;
+    }
+
     try {
       setIsExporting(true);
 
-      // 1) Luăm conținutul SVG-urilor originale din assets
-      const [svg1Text, svg2Text] = await Promise.all([
-        fetch(camera1Outline).then((r) => r.text()),
-        fetch(camera2Outline).then((r) => r.text()),
-      ]);
+      const href1 = svgTextToDataUrl(floorSvgText);
+      const href2 = svgTextToDataUrl(roomSvgText);
 
-      const svg1Base64 = encodeSvgToBase64(svg1Text);
-      const svg2Base64 = encodeSvgToBase64(svg2Text);
-
-      const href1 = `data:image/svg+xml;base64,${svg1Base64}`;
-      const href2 = `data:image/svg+xml;base64,${svg2Base64}`;
-
-      // 2) Calculăm bounding box comun + padding
       const cam1MinX = fixedX;
       const cam1MinY = fixedY;
       const cam1MaxX = fixedX + SVG_RENDER_SIZE;
@@ -215,7 +276,6 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
       let maxX = Math.max(cam1MaxX, cam2MaxX);
       let maxY = Math.max(cam1MaxY, cam2MaxY);
 
-      // padding
       minX = Math.max(0, minX - EXPORT_PADDING);
       minY = Math.max(0, minY - EXPORT_PADDING);
       maxX = Math.min(CANVAS_SIZE, maxX + EXPORT_PADDING);
@@ -224,13 +284,11 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
       const croppedWidth = maxX - minX;
       const croppedHeight = maxY - minY;
 
-      // repoziționăm imaginile în noul sistem
       const exportFixedX = fixedX - minX;
       const exportFixedY = fixedY - minY;
       const exportMovableX = movablePos.x - minX;
       const exportMovableY = movablePos.y - minY;
 
-      // 3) Construim SVG-ul exportat tăiat la fix (cu scale la camera2)
       const exportSvg = `
 <svg xmlns="http://www.w3.org/2000/svg"
      width="${croppedWidth}"
@@ -247,11 +305,36 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
          preserveAspectRatio="xMidYMid meet" />
 </svg>`.trim();
 
+      // trimitem SVG-ul combinat la backend
+      try {
+        const resp = await fetch(`${API_BASE}/floors/${floorNumber}/svg`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: floorName || `Floor ${floorNumber}`,
+            svg: exportSvg,
+          }),
+        });
+        console.log("POST /floors SVG status:", resp.status);
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          console.error("POST /floors SVG error body:", text);
+        } else {
+          const data = await resp.json();
+          console.log("POST /floors SVG data:", data);
+        }
+      } catch (err) {
+        console.error("Error saving floor SVG:", err);
+      }
+
+      // optional: download local
       const blob = new Blob([exportSvg], {
         type: "image/svg+xml;charset=utf-8",
       });
       const url = URL.createObjectURL(blob);
-
       const a = document.createElement("a");
       const baseName = floorName.trim() || "floor";
       a.href = url;
@@ -267,20 +350,19 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
     }
   };
 
+  // ======================
+  // RENDER
+  // ======================
   return (
     <div className="min-h-screen flex flex-col items-center justify-start bg-gradient-to-br from-slate-900 via-slate-800 to-black p-10 gap-8">
-
-      {/* TITLU */}
       <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400 tracking-tight">
         Floor Configuration
       </h1>
 
-      {/* FORMULAR SUS */}
       <form
         onSubmit={handleSave}
         className="bg-slate-900/50 backdrop-blur-md p-8 rounded-3xl shadow-2xl w-full max-w-2xl border border-slate-700 space-y-6"
       >
-        {/* Floor Name */}
         <div className="flex flex-col">
           <label className="text-slate-300 font-semibold mb-2">
             Floor Name
@@ -295,7 +377,6 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
           />
         </div>
 
-        {/* Floor Number */}
         <div className="flex flex-col">
           <label className="text-slate-300 font-semibold mb-2">
             Floor Number
@@ -310,7 +391,6 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
           />
         </div>
 
-        {/* LAZ file */}
         <div className="flex flex-col">
           <label className="text-slate-300 font-semibold mb-2">
             Upload .laz File
@@ -324,7 +404,6 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
           />
         </div>
 
-        {/* SAVE + FINISH BUTTONS */}
         <div className="flex gap-4 pt-2">
           <button
             type="submit"
@@ -348,9 +427,7 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
         </div>
       </form>
 
-      {/* CANVAS CU FUNDAL ALB + SVG-URI */}
       <div className="w-full max-w-5xl flex flex-col gap-4">
-        {/* Controale zoom */}
         <div className="flex items-center justify-between">
           <div className="flex gap-2 items-center">
             <button
@@ -373,7 +450,6 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
           </div>
         </div>
 
-        {/* Zona albă cu SVG-uri */}
         <div className="w-full aspect-square bg-white rounded-3xl shadow-2xl overflow-hidden flex items-center justify-center">
           <svg
             ref={svgContainerRef}
@@ -390,7 +466,6 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
               transformOrigin: "center center",
             }}
           >
-            {/* fundal alb logic */}
             <rect
               x={0}
               y={0}
@@ -399,31 +474,32 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
               fill="white"
             />
 
-            {/* SVG FIX – centrat */}
-            <image
-              href={camera1Outline}
-              x={fixedX}
-              y={fixedY}
-              width={SVG_RENDER_SIZE}
-              height={SVG_RENDER_SIZE}
-              preserveAspectRatio="xMidYMid meet"
-              opacity={0.9}
-            />
+            {floorSvgDataUrl && (
+              <image
+                href={floorSvgDataUrl}
+                x={fixedX}
+                y={fixedY}
+                width={SVG_RENDER_SIZE}
+                height={SVG_RENDER_SIZE}
+                preserveAspectRatio="xMidYMid meet"
+                opacity={0.9}
+              />
+            )}
 
-            {/* SVG MOBIL – mutabil cu drag & resize */}
-            <image
-              href={camera2Outline}
-              x={movablePos.x}
-              y={movablePos.y}
-              width={movableWidth}
-              height={movableHeight}
-              preserveAspectRatio="xMidYMid meet"
-              opacity={0.8}
-              style={{ cursor: "grab" }}
-              onMouseDown={handleMovableMouseDown}
-            />
+            {roomSvgDataUrl && (
+              <image
+                href={roomSvgDataUrl}
+                x={movablePos.x}
+                y={movablePos.y}
+                width={movableWidth}
+                height={movableHeight}
+                preserveAspectRatio="xMidYMid meet"
+                opacity={0.8}
+                style={{ cursor: "grab" }}
+                onMouseDown={handleMovableMouseDown}
+              />
+            )}
 
-            {/* HANDLE DE RESIZE – colț dreapta-jos al camerei mobile (invizibil) */}
             <rect
               x={movablePos.x + movableWidth - HANDLE_SIZE}
               y={movablePos.y + movableHeight - HANDLE_SIZE}
@@ -439,7 +515,6 @@ const ChooseFloorPage: React.FC<ChooseFloorPageProps> = ({
         </div>
       </div>
 
-      {/* BACK BUTTON */}
       <button
         onClick={onBack}
         className="mt-4 px-6 py-3 rounded-xl bg-slate-800 text-white font-semibold text-lg shadow-lg hover:bg-slate-700 transition"
