@@ -170,15 +170,21 @@ app.get("/floors/:floorNumber", async (req, res) => {
 });
 
 // GET toate etajele existente în DB --> asta facem pentru a selecta etajul dorit.
+// GET toate etajele existente în DB --> asta facem pentru a selecta etajul dorit.
 app.get("/floors", async (req, res) => {
   try {
-    const result = await db.query("SELECT floor_number FROM floors ORDER BY floor_number ASC;");
+    const result = await db.query(`
+      SELECT id, floor_number, name, svg
+      FROM floors
+      ORDER BY floor_number ASC;
+    `);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: "Database error." });
   }
 });
+
 
 
 // =========================

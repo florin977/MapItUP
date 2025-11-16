@@ -209,33 +209,42 @@ const GuestMapPage: React.FC<GuestMapPageProps> = ({
     };
     
     const renderMapContent = () => {
-        // avem SVG în DB pentru etajul selectat
-        if (currentFloorSvg) {
-            return <g dangerouslySetInnerHTML={{ __html: currentFloorSvg }} />;
-        }
+  // 1) Dacă avem SVG pentru etajul selectat → punem fundal alb + SVG-ul salvat
+  if (currentFloorSvg) {
+    return (
+      <g>
+        {/* fundal alb pe toată zona de hartă */}
+        <rect x="0" y="0" width="800" height="600" fill="white" />
 
-        // fallback: dacă nu e nimic în DB, poți să afișezi harta statică sau un mesaj
-        if (floors.length === 0) {
-            // încă nu avem nimic în DB → poți folosi CampusMapSVG ca înainte
-            return <CampusMapSVG onBuildingClick={handleBuildingClick} />;
-        }
+        {/* SVG-ul din baza de date, desenat peste */}
+        <g dangerouslySetInnerHTML={{ __html: currentFloorSvg }} />
+      </g>
+    );
+  }
 
-        return (
-            <g>
-                <rect x="0" y="0" width="800" height="600" fill="white" />
-                <text
-                    x="400"
-                    y="300"
-                    textAnchor="middle"
-                    fontFamily="sans-serif"
-                    fontSize="20"
-                    fill="black"
-                >
-                    No SVG saved for this floor yet.
-                </text>
-            </g>
-        );
-    };
+  // 2) Dacă nu există deloc etaje în DB → fallback pe harta statică veche
+  if (floors.length === 0) {
+    return <CampusMapSVG onBuildingClick={handleBuildingClick} />;
+  }
+
+  // 3) Există etaje, dar pentru etajul curent nu avem încă SVG
+  return (
+    <g>
+      <rect x="0" y="0" width="800" height="600" fill="white" />
+      <text
+        x="400"
+        y="300"
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontSize="20"
+        fill="black"
+      >
+        No SVG saved for this floor yet.
+      </text>
+    </g>
+  );
+};
+
 
 
     const resetRoute = () => {
